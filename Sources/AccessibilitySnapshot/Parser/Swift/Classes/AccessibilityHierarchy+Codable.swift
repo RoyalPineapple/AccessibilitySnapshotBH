@@ -12,7 +12,7 @@ import UIKit
 
 public extension UIAccessibilityTraits {
     /// Known trait names for human-readable encoding
-    private static let knownTraits: [(trait: UIAccessibilityTraits, name: String)] = [
+    static let knownTraits: [(trait: UIAccessibilityTraits, name: String)] = [
         (.button, "button"),
         (.link, "link"),
         (.image, "image"),
@@ -40,6 +40,23 @@ public extension UIAccessibilityTraits {
         (.switchButton, "switchButton"),
     ]
 
+    /// Human-readable names for all traits present in this bitmask.
+    var traitNames: [String] {
+        Self.knownTraits.compactMap { contains($0.trait) ? $0.name : nil }
+    }
+
+    /// Reconstruct a bitmask from an array of trait name strings.
+    /// Unknown names are silently ignored.
+    static func fromNames(_ names: [String]) -> UIAccessibilityTraits {
+        var traits = UIAccessibilityTraits()
+        for name in names {
+            if let known = knownTraits.first(where: { $0.name == name }) {
+                traits.insert(known.trait)
+            }
+        }
+        return traits
+    }
+
     init(from decoder: Decoder) throws {
         let container = try decoder.singleValueContainer()
         let traitNames = try container.decode([String].self)
@@ -65,22 +82,16 @@ public extension UIAccessibilityTraits {
 
     func encode(to encoder: Encoder) throws {
         var container = encoder.singleValueContainer()
-        var traitNames: [String] = []
+        var names = traitNames
         var remainingRawValue = rawValue
-
-        for (trait, name) in Self.knownTraits {
-            if contains(trait) {
-                traitNames.append(name)
-                remainingRawValue &= ~trait.rawValue
-            }
+        for (trait, _) in Self.knownTraits where contains(trait) {
+            remainingRawValue &= ~trait.rawValue
         }
-
         // Encode any unknown traits as raw values for forward compatibility
         if remainingRawValue != 0 {
-            traitNames.append("unknown(\(remainingRawValue))")
+            names.append("unknown(\(remainingRawValue))")
         }
-
-        try container.encode(traitNames)
+        try container.encode(names)
     }
 }
 
