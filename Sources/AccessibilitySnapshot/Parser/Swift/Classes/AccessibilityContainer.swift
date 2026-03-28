@@ -18,6 +18,9 @@ public struct AccessibilityContainer: Equatable, Codable {
 
         /// A tab bar container (detected via .tabBar trait)
         case tabBar
+
+        /// A scrollable container (UIScrollView or subclass) with content dimensions
+        case scrollable(contentSize: CGSize)
     }
 
     /// The type of container with its associated data

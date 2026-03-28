@@ -148,7 +148,8 @@ public final class AccessibilityHierarchyParser {
         rotorResultLimit: Int = AccessibilityElement.defaultRotorResultLimit,
         userInterfaceLayoutDirectionProvider: UserInterfaceLayoutDirectionProviding = UIApplication.shared,
         userInterfaceIdiomProvider: UserInterfaceIdiomProviding = UIDevice.current,
-        elementVisitor: ((AccessibilityElement, Int, NSObject) -> Void)? = nil
+        elementVisitor: ((AccessibilityElement, Int, NSObject) -> Void)? = nil,
+        containerVisitor: ((AccessibilityContainer, NSObject) -> Void)? = nil
     ) -> [AccessibilityHierarchy] {
         let userInterfaceLayoutDirection = userInterfaceLayoutDirectionProvider.userInterfaceLayoutDirection
         let userInterfaceIdiom = userInterfaceIdiomProvider.userInterfaceIdiom
@@ -176,14 +177,14 @@ public final class AccessibilityHierarchyParser {
             )
         }
 
-        let elements: [AccessibilityElement] = contextualizedElements.enumerated().map { (index, element) in
+        let elements: [AccessibilityElement] = contextualizedElements.enumerated().map { index, element in
             let built = buildElement(from: element.object, context: element.context, in: root, rotorResultLimit: rotorResultLimit)
             elementVisitor?(built, index, element.object)
             return built
         }
 
         // Map AccessibilityNode tree to AccessibilityHierarchy tree
-        return mapNodesToHierarchy(accessibilityNodes, sortedElements: uncontextualizedElements, elements: elements, in: root)
+        return mapNodesToHierarchy(accessibilityNodes, sortedElements: uncontextualizedElements, elements: elements, in: root, containerVisitor: containerVisitor)
     }
 
     // MARK: - Private Types
@@ -505,7 +506,8 @@ public final class AccessibilityHierarchyParser {
         _ nodes: [AccessibilityNode],
         sortedElements: [(object: NSObject, contextProvider: ContextProvider?)],
         elements: [AccessibilityElement],
-        in root: UIView
+        in root: UIView,
+        containerVisitor: ((AccessibilityContainer, NSObject) -> Void)? = nil
     ) -> [AccessibilityHierarchy] {
         // Build lookup: object identity → traversal index
         var indexLookup: [ObjectIdentifier: Int] = [:]
@@ -528,9 +530,12 @@ public final class AccessibilityHierarchyParser {
                 if let info = containerInfo {
                     let frame = root.convert(info.view.bounds, from: info.view)
 
-                    // Convert UIAccessibilityContainerType + associated data to our ContainerType
+                    // Convert UIAccessibilityContainerType + associated data to our ContainerType.
+                    // UIScrollView subclasses get .scrollable regardless of their semantic container type.
                     let containerType: AccessibilityContainer.ContainerType
-                    if info.traits.contains(.tabBar) {
+                    if let scrollView = info.view as? UIScrollView, scrollView.isScrollEnabled {
+                        containerType = .scrollable(contentSize: scrollView.contentSize)
+                    } else if info.traits.contains(.tabBar) {
                         containerType = .tabBar
                     } else {
                         switch info.type {
@@ -543,7 +548,6 @@ public final class AccessibilityHierarchyParser {
                         case .dataTable:
                             containerType = .dataTable(rowCount: info.rowCount ?? 0, columnCount: info.columnCount ?? 0)
                         case .none:
-                            // Should not reach here since containerInfo(for:) returns nil for .none
                             containerType = .semanticGroup(label: info.label, value: info.value, identifier: info.identifier)
                         @unknown default:
                             containerType = .semanticGroup(label: info.label, value: info.value, identifier: info.identifier)
@@ -554,6 +558,7 @@ public final class AccessibilityHierarchyParser {
                         type: containerType,
                         frame: frame
                     )
+                    containerVisitor?(container, info.view)
                     return [.container(container, children: mappedChildren)]
                 }
 
@@ -799,6 +804,12 @@ private extension NSObject {
 
         // semanticGroup only if has label/value/identifier
         if containerType == .semanticGroup, label != nil || value != nil || identifier != nil {
+            return ContainerInfo(view: view, type: containerType, label: label, value: value, identifier: identifier, traits: traits, rowCount: nil, columnCount: nil)
+        }
+
+        // UIScrollView subclasses emit a container even without a semantic type,
+        // so the hierarchy captures scroll boundaries for coordinate conversion.
+        if let scrollView = view as? UIScrollView, scrollView.isScrollEnabled {
             return ContainerInfo(view: view, type: containerType, label: label, value: value, identifier: identifier, traits: traits, rowCount: nil, columnCount: nil)
         }
 
