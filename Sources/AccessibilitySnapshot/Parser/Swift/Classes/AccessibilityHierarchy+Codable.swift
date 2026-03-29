@@ -13,6 +13,7 @@ import UIKit
 public extension UIAccessibilityTraits {
     /// Known trait names for human-readable encoding
     static let knownTraits: [(trait: UIAccessibilityTraits, name: String)] = [
+        // Public UIAccessibilityTraits (bits 0-14, 16-17)
         (.button, "button"),
         (.link, "link"),
         (.image, "image"),
@@ -30,7 +31,7 @@ public extension UIAccessibilityTraits {
         (.causesPageTurn, "causesPageTurn"),
         (.header, "header"),
         (.tabBar, "tabBar"),
-        // Private traits (defined in UIAccessibility+SnapshotAdditions.swift)
+        // Private traits — core set (used by the parser for element classification)
         (.textEntry, "textEntry"),
         (.isEditing, "isEditing"),
         (.secureTextField, "secureTextField"),
@@ -38,6 +39,28 @@ public extension UIAccessibilityTraits {
         (.tabBarItem, "tabBarItem"),
         (.textArea, "textArea"),
         (.switchButton, "switchButton"),
+        // Private traits — extended set (from AXRuntime, surfaced for diagnostics)
+        (.webContent, "webContent"),
+        (.pickerElement, "pickerElement"),
+        (.radioButton, "radioButton"),
+        (.launchIcon, "launchIcon"),
+        (.statusBarElement, "statusBarElement"),
+        (.secureTextField, "secureTextField"),
+        (.inactive, "inactive"),
+        (.footer, "footer"),
+        (.autoCorrectCandidate, "autoCorrectCandidate"),
+        (.deleteKey, "deleteKey"),
+        (.selectionDismissesItem, "selectionDismissesItem"),
+        (.visited, "visited"),
+        (.spacer, "spacer"),
+        (.tableIndex, "tableIndex"),
+        (.map, "map"),
+        (.textOperationsAvailable, "textOperationsAvailable"),
+        (.draggable, "draggable"),
+        (.popupButton, "popupButton"),
+        (.menuItem, "menuItem"),
+        (.textArea, "textArea"),
+        (.alert, "alert"),
     ]
 
     /// The set of all known trait name strings. Authoritative source of truth —

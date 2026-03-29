@@ -555,7 +555,8 @@ public final class AccessibilityHierarchyParser {
                     // contentSize directly; for non-UIScrollViews (SwiftUI PlatformContainer)
                     // we derive content extent from the largest child subview frame.
                     let containerType: AccessibilityContainer.ContainerType
-                    if info.view is UIScrollView || info.view.accessibilityIsScrollable {
+                    if info.view is UIScrollView
+                        || (info.view.accessibilityIsScrollable && info.view.subviews.contains(where: { $0 is UIScrollView })) {
                         let contentSize: CGSize
                         if let scrollView = info.view as? UIScrollView {
                             contentSize = scrollView.contentSize
@@ -840,11 +841,18 @@ private extension NSObject {
             return ContainerInfo(view: view, type: containerType, label: label, value: value, identifier: identifier, traits: traits, rowCount: nil, columnCount: nil)
         }
 
-        // Any view the accessibility system considers scrollable emits a container,
-        // so the hierarchy captures scroll boundaries. This catches UIScrollView
-        // subclasses AND SwiftUI's PlatformContainer (which wraps a HostingScrollView
-        // but isn't a UIScrollView itself).
-        if view is UIScrollView || view.accessibilityIsScrollable {
+        // UIScrollView subclasses emit a container for scroll boundary tracking.
+        if let scrollView = view as? UIScrollView, scrollView.isScrollEnabled {
+            return ContainerInfo(view: view, type: containerType, label: label, value: value, identifier: identifier, traits: traits, rowCount: nil, columnCount: nil)
+        }
+
+        // Non-UIScrollView containers that wrap a UIScrollView child (SwiftUI's
+        // PlatformContainer wraps HostingScrollView). Only match if the view
+        // actually has a UIScrollView child — _accessibilityIsScrollable alone
+        // is too broad (returns YES for every view inside a scrollable context).
+        if !(view is UIScrollView),
+           view.accessibilityIsScrollable,
+           view.subviews.contains(where: { $0 is UIScrollView }) {
             return ContainerInfo(view: view, type: containerType, label: label, value: value, identifier: identifier, traits: traits, rowCount: nil, columnCount: nil)
         }
 

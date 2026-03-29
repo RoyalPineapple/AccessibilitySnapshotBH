@@ -593,19 +593,33 @@ extension String {
 // │  53 │ 0x0020000000000000 │ switchButton         │ UISwitch                        │
 // └─────┴────────────────────┴──────────────────────┴─────────────────────────────────┘
 extension UIAccessibilityTraits {
+    static let webContent = UIAccessibilityTraits(rawValue: 1 << 17)
     static let textEntry = UIAccessibilityTraits(rawValue: 1 << 18)
-
+    static let pickerElement = UIAccessibilityTraits(rawValue: 1 << 19)
+    static let radioButton = UIAccessibilityTraits(rawValue: 1 << 20)
     static let isEditing = UIAccessibilityTraits(rawValue: 1 << 21)
-
+    static let launchIcon = UIAccessibilityTraits(rawValue: 1 << 22)
+    static let statusBarElement = UIAccessibilityTraits(rawValue: 1 << 23)
     static let secureTextField = UIAccessibilityTraits(rawValue: 1 << 24)
-
+    static let inactive = UIAccessibilityTraits(rawValue: 1 << 25)
+    static let footer = UIAccessibilityTraits(rawValue: 1 << 26)
     static let backButton = UIAccessibilityTraits(rawValue: 1 << 27)
-
     static let tabBarItem = UIAccessibilityTraits(rawValue: 1 << 28)
-
+    static let autoCorrectCandidate = UIAccessibilityTraits(rawValue: 1 << 29)
+    static let deleteKey = UIAccessibilityTraits(rawValue: 1 << 30)
+    static let selectionDismissesItem = UIAccessibilityTraits(rawValue: 1 << 31)
+    static let visited = UIAccessibilityTraits(rawValue: 1 << 32)
+    static let scrollable = UIAccessibilityTraits(rawValue: 1 << 33)
+    static let spacer = UIAccessibilityTraits(rawValue: 1 << 34)
+    static let tableIndex = UIAccessibilityTraits(rawValue: 1 << 35)
+    static let map = UIAccessibilityTraits(rawValue: 1 << 36)
+    static let textOperationsAvailable = UIAccessibilityTraits(rawValue: 1 << 37)
+    static let draggable = UIAccessibilityTraits(rawValue: 1 << 38)
+    static let popupButton = UIAccessibilityTraits(rawValue: 1 << 40)
     static let textArea = UIAccessibilityTraits(rawValue: 1 << 47)
-
+    static let menuItem = UIAccessibilityTraits(rawValue: 1 << 52)
     static let switchButton = UIAccessibilityTraits(rawValue: 1 << 53)
+    static let alert = UIAccessibilityTraits(rawValue: 1 << 56)
 }
 
 // MARK: -
