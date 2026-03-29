@@ -1,9 +1,9 @@
 import CoreGraphics
 
 /// Information about a container node
-public struct AccessibilityContainer: Equatable, Codable {
+public struct AccessibilityContainer: Hashable, Codable {
     /// The type of accessibility container with its associated data
-    public enum ContainerType: Equatable, Codable {
+    public enum ContainerType: Hashable, Codable {
         /// A semantic grouping with optional label, value, and identifier
         case semanticGroup(label: String?, value: String?, identifier: String?)
 
