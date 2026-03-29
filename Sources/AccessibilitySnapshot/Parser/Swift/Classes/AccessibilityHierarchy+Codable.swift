@@ -40,6 +40,10 @@ public extension UIAccessibilityTraits {
         (.switchButton, "switchButton"),
     ]
 
+    /// The set of all known trait name strings. Authoritative source of truth —
+    /// cross-platform mirrors (e.g. HeistElement.knownTraitNames) must equal this set.
+    static let knownTraitNames: Set<String> = Set(knownTraits.map(\.name))
+
     /// Human-readable names for all traits present in this bitmask.
     var traitNames: [String] {
         Self.knownTraits.compactMap { contains($0.trait) ? $0.name : nil }
