@@ -2,6 +2,25 @@ import Accessibility
 import SwiftUI
 import UIKit
 
+// MARK: - Accessibility SPI
+
+extension NSObject {
+    /// Whether the accessibility system considers this object scrollable.
+    /// Uses the private `_accessibilityIsScrollable` SPI which returns YES for
+    /// UIScrollView subclasses and SwiftUI's PlatformContainer scroll wrappers.
+    /// Falls back to false if the selector is not available.
+    var accessibilityIsScrollable: Bool {
+        let sel = NSSelectorFromString("_accessibilityIsScrollable")
+        guard responds(to: sel) else { return false }
+        // _accessibilityIsScrollable returns BOOL. Use IMP cast for type safety
+        // since perform() is undefined for non-object return types.
+        typealias BoolIMP = @convention(c) (NSObject, Selector) -> Bool
+        let imp = method(for: sel)
+        let fn = unsafeBitCast(imp, to: BoolIMP.self)
+        return fn(self, sel)
+    }
+}
+
 public protocol UserInterfaceLayoutDirectionProviding {
     var userInterfaceLayoutDirection: UIUserInterfaceLayoutDirection { get }
 }
@@ -531,10 +550,24 @@ public final class AccessibilityHierarchyParser {
                     let frame = root.convert(info.view.bounds, from: info.view)
 
                     // Convert UIAccessibilityContainerType + associated data to our ContainerType.
-                    // UIScrollView subclasses get .scrollable regardless of their semantic container type.
+                    // Views the accessibility system considers scrollable get .scrollable
+                    // regardless of their semantic container type. For UIScrollViews we use
+                    // contentSize directly; for non-UIScrollViews (SwiftUI PlatformContainer)
+                    // we derive content extent from the largest child subview frame.
                     let containerType: AccessibilityContainer.ContainerType
-                    if let scrollView = info.view as? UIScrollView, scrollView.isScrollEnabled {
-                        containerType = .scrollable(contentSize: scrollView.contentSize)
+                    if info.view is UIScrollView || info.view.accessibilityIsScrollable {
+                        let contentSize: CGSize
+                        if let scrollView = info.view as? UIScrollView {
+                            contentSize = scrollView.contentSize
+                        } else {
+                            // Derive content size from children (e.g. PlatformGroupContainer
+                            // inside PlatformContainer has the full content frame)
+                            let maxChild = info.view.subviews.reduce(CGRect.zero) { union, child in
+                                union.union(child.frame)
+                            }
+                            contentSize = maxChild.size
+                        }
+                        containerType = .scrollable(contentSize: contentSize)
                     } else if info.traits.contains(.tabBar) {
                         containerType = .tabBar
                     } else {
@@ -807,9 +840,11 @@ private extension NSObject {
             return ContainerInfo(view: view, type: containerType, label: label, value: value, identifier: identifier, traits: traits, rowCount: nil, columnCount: nil)
         }
 
-        // UIScrollView subclasses emit a container even without a semantic type,
-        // so the hierarchy captures scroll boundaries for coordinate conversion.
-        if let scrollView = view as? UIScrollView, scrollView.isScrollEnabled {
+        // Any view the accessibility system considers scrollable emits a container,
+        // so the hierarchy captures scroll boundaries. This catches UIScrollView
+        // subclasses AND SwiftUI's PlatformContainer (which wraps a HostingScrollView
+        // but isn't a UIScrollView itself).
+        if view is UIScrollView || view.accessibilityIsScrollable {
             return ContainerInfo(view: view, type: containerType, label: label, value: value, identifier: identifier, traits: traits, rowCount: nil, columnCount: nil)
         }
 
