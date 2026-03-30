@@ -609,7 +609,6 @@ extension UIAccessibilityTraits {
     static let deleteKey = UIAccessibilityTraits(rawValue: 1 << 30)
     static let selectionDismissesItem = UIAccessibilityTraits(rawValue: 1 << 31)
     static let visited = UIAccessibilityTraits(rawValue: 1 << 32)
-    static let scrollable = UIAccessibilityTraits(rawValue: 1 << 33)
     static let spacer = UIAccessibilityTraits(rawValue: 1 << 34)
     static let tableIndex = UIAccessibilityTraits(rawValue: 1 << 35)
     static let map = UIAccessibilityTraits(rawValue: 1 << 36)
@@ -617,6 +616,7 @@ extension UIAccessibilityTraits {
     static let draggable = UIAccessibilityTraits(rawValue: 1 << 38)
     static let popupButton = UIAccessibilityTraits(rawValue: 1 << 40)
     static let textArea = UIAccessibilityTraits(rawValue: 1 << 47)
+    static let scrollable = textArea
     static let menuItem = UIAccessibilityTraits(rawValue: 1 << 52)
     static let switchButton = UIAccessibilityTraits(rawValue: 1 << 53)
     static let alert = UIAccessibilityTraits(rawValue: 1 << 56)

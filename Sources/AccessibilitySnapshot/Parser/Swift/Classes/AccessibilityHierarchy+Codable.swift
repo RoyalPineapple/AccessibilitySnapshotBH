@@ -59,7 +59,6 @@ public extension UIAccessibilityTraits {
         (.draggable, "draggable"),
         (.popupButton, "popupButton"),
         (.menuItem, "menuItem"),
-        (.textArea, "textArea"),
         (.alert, "alert"),
     ]
 
