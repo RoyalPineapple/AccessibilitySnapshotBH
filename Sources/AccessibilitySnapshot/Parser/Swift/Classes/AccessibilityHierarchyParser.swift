@@ -742,11 +742,16 @@ private extension NSObject {
             return []
         }
 
-        // Ignore elements that are views if they are not visible on the screen, either due to visibility, size, or
+        // Ignore elements that are views if they are not visible on the screen, either due to visibility or
         // alpha. VoiceOver actually has some very low alpha threshold at which it will still display an element
         // (presumably to account for animations and/or rounding error). We use an alpha threshold of zero since that
         // should fulfill the intent.
-        if let `self` = self as? UIView, self.isHidden || self.frame.size == .zero || self.alpha <= 0 {
+        //
+        // Note: zero-frame views are NOT pruned. SwiftUI uses zero-frame _UIInheritedView wrappers as layout
+        // containers whose children have non-zero frames (e.g., floating bar search fields). Pruning zero-frame
+        // views causes the parser to miss accessible elements inside these wrappers. VoiceOver's
+        // _accessibilityLeafDescendants does not prune by frame size.
+        if let `self` = self as? UIView, self.isHidden || self.alpha <= 0 {
             return []
         }
 
