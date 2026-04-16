@@ -184,6 +184,7 @@ public final class AccessibilityHierarchyParser {
             userInterfaceIdiom: userInterfaceIdiom
         )
 
+        var tabBarCache: [UIView: [NSObject]] = [:]
         let contextualizedElements = uncontextualizedElements.map { element in
             ContextualElement(
                 object: element.object,
@@ -191,7 +192,8 @@ public final class AccessibilityHierarchyParser {
                     for: element.object,
                     from: element.contextProvider,
                     userInterfaceLayoutDirection: userInterfaceLayoutDirection,
-                    userInterfaceIdiom: userInterfaceIdiom
+                    userInterfaceIdiom: userInterfaceIdiom,
+                    tabBarCache: &tabBarCache
                 )
             )
         }
@@ -343,7 +345,8 @@ public final class AccessibilityHierarchyParser {
         for element: NSObject,
         from contextProvider: ContextProvider?,
         userInterfaceLayoutDirection: UIUserInterfaceLayoutDirection,
-        userInterfaceIdiom: UIUserInterfaceIdiom
+        userInterfaceIdiom: UIUserInterfaceIdiom,
+        tabBarCache: inout [UIView: [NSObject]]
     ) -> Context? {
         guard let contextProvider = contextProvider else {
             return nil
@@ -385,7 +388,7 @@ public final class AccessibilityHierarchyParser {
             // hierarchy under the view are treated as tabs.
             if view.accessibilityTraits.contains(.tabBar), let element = element as? UIView {
                 let accessibleElements: [NSObject]
-                if let elements = viewToElementsMap[view] {
+                if let elements = tabBarCache[view] {
                     accessibleElements = elements
                 } else {
                     let hierarchy = view.recursiveAccessibilityHierarchy()
@@ -396,7 +399,7 @@ public final class AccessibilityHierarchyParser {
                         userInterfaceLayoutDirection: userInterfaceLayoutDirection,
                         userInterfaceIdiom: userInterfaceIdiom
                     ).map { $0.object }
-                    viewToElementsMap[view] = accessibleElements
+                    tabBarCache[view] = accessibleElements
                 }
 
                 return .tab(
@@ -514,9 +517,6 @@ public final class AccessibilityHierarchyParser {
     }
 
     // MARK: - Private Properties
-
-    /// Used for memoization of accessibility hierarchy parsing when determining element contexts.
-    private var viewToElementsMap: [UIView: [NSObject]] = [:]
 
     // MARK: - Private Hierarchy Methods
 
