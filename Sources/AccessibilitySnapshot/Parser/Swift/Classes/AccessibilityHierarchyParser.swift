@@ -556,7 +556,8 @@ public final class AccessibilityHierarchyParser {
                     // we derive content extent from the largest child subview frame.
                     let containerType: AccessibilityContainer.ContainerType
                     if info.view is UIScrollView
-                        || (info.view.accessibilityIsScrollable && info.view.subviews.contains(where: { $0 is UIScrollView })) {
+                        || (info.view.accessibilityIsScrollable && info.view.subviews.contains(where: { $0 is UIScrollView }))
+                    {
                         let contentSize: CGSize
                         if let scrollView = info.view as? UIScrollView {
                             contentSize = scrollView.contentSize
@@ -571,6 +572,8 @@ public final class AccessibilityHierarchyParser {
                         containerType = .scrollable(contentSize: contentSize)
                     } else if info.traits.contains(.tabBar) {
                         containerType = .tabBar
+                    } else if info.view is UINavigationBar {
+                        containerType = .navigationBar
                     } else {
                         switch info.type {
                         case .semanticGroup:
@@ -836,6 +839,13 @@ private extension NSObject {
             return ContainerInfo(view: view, type: containerType, label: label, value: value, identifier: identifier, traits: traits, rowCount: nil, columnCount: nil)
         }
 
+        // UINavigationBar always creates a container. UIKit does not expose
+        // a public trait for nav bars (UINavigationBar.accessibilityTraits
+        // is 0), so class sniff is the only honest signal available.
+        if view is UINavigationBar {
+            return ContainerInfo(view: view, type: containerType, label: label, value: value, identifier: identifier, traits: traits, rowCount: nil, columnCount: nil)
+        }
+
         // list, landmark, dataTable always create container
         if containerType == .list || containerType == .landmark || containerType == .dataTable {
             return ContainerInfo(view: view, type: containerType, label: label, value: value, identifier: identifier, traits: traits, rowCount: rowCount, columnCount: columnCount)
@@ -857,7 +867,8 @@ private extension NSObject {
         // is too broad (returns YES for every view inside a scrollable context).
         if !(view is UIScrollView),
            view.accessibilityIsScrollable,
-           view.subviews.contains(where: { $0 is UIScrollView }) {
+           view.subviews.contains(where: { $0 is UIScrollView })
+        {
             return ContainerInfo(view: view, type: containerType, label: label, value: value, identifier: identifier, traits: traits, rowCount: nil, columnCount: nil)
         }
 
