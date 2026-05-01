@@ -556,7 +556,8 @@ public final class AccessibilityHierarchyParser {
                     // we derive content extent from the largest child subview frame.
                     let containerType: AccessibilityContainer.ContainerType
                     if info.view is UIScrollView
-                        || (info.view.accessibilityIsScrollable && info.view.subviews.contains(where: { $0 is UIScrollView })) {
+                        || (info.view.accessibilityIsScrollable && info.view.subviews.contains(where: { $0 is UIScrollView }))
+                    {
                         let contentSize: CGSize
                         if let scrollView = info.view as? UIScrollView {
                             contentSize = scrollView.contentSize
@@ -779,11 +780,14 @@ private extension NSObject {
             ))
 
         } else if let `self` = self as? UIView {
-            // If there is at least one modal subview, the last modal is the only subview parsed in the accessibility
-            // hierarchy. Otherwise, parse all of the subviews.
+            // If there is at least one modal subview, parse from the last modal
+            // subview forward. UIKit popovers can expose an empty modal dismiss
+            // region as a sibling before the actual popover controls; limiting
+            // traversal to only that dismiss region drops the presented content.
+            // Siblings before the modal marker remain background content.
             let subviewsToParse: [UIView]
-            if let lastModalView = self.subviews.last(where: { $0.accessibilityViewIsModal }) {
-                subviewsToParse = [lastModalView]
+            if let lastModalIndex = self.subviews.lastIndex(where: { $0.accessibilityViewIsModal }) {
+                subviewsToParse = Array(self.subviews[lastModalIndex...])
             } else {
                 subviewsToParse = self.subviews
             }
@@ -857,7 +861,8 @@ private extension NSObject {
         // is too broad (returns YES for every view inside a scrollable context).
         if !(view is UIScrollView),
            view.accessibilityIsScrollable,
-           view.subviews.contains(where: { $0 is UIScrollView }) {
+           view.subviews.contains(where: { $0 is UIScrollView })
+        {
             return ContainerInfo(view: view, type: containerType, label: label, value: value, identifier: identifier, traits: traits, rowCount: nil, columnCount: nil)
         }
 

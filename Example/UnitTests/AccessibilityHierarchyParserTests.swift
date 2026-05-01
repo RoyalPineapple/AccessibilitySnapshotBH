@@ -115,6 +115,35 @@ final class AccessibilityHierarchyParserTests: XCTestCase {
         XCTAssertEqual(padAgain, ["C", "D", "B", "A"])
     }
 
+    func testModalDismissRegionDoesNotHideLaterPopoverSiblings() {
+        let rootView = UIView(frame: .init(x: 0, y: 0, width: 400, height: 400))
+
+        let backgroundElement = UIView(frame: .init(x: 20, y: 20, width: 160, height: 44))
+        backgroundElement.isAccessibilityElement = true
+        backgroundElement.accessibilityLabel = "Background"
+        backgroundElement.accessibilityFrame = backgroundElement.frame
+        rootView.addSubview(backgroundElement)
+
+        let dismissRegion = UIView(frame: rootView.bounds.insetBy(dx: -1000, dy: -1000))
+        dismissRegion.accessibilityViewIsModal = true
+        dismissRegion.isAccessibilityElement = false
+        dismissRegion.accessibilityIdentifier = "PopoverDismissRegion"
+        rootView.addSubview(dismissRegion)
+
+        let popoverElement = UIView(frame: .init(x: 100, y: 120, width: 160, height: 44))
+        popoverElement.isAccessibilityElement = true
+        popoverElement.accessibilityLabel = "Popover Action"
+        popoverElement.accessibilityFrame = popoverElement.frame
+        rootView.addSubview(popoverElement)
+
+        let labels = AccessibilityHierarchyParser()
+            .parseAccessibilityHierarchy(in: rootView)
+            .flattenToElements()
+            .compactMap(\.label)
+
+        XCTAssertEqual(labels, ["Popover Action"])
+    }
+
     // MARK: - Activation Point Default Detection
 
     func testZeroFrameAndZeroActivationPointIsDefault() {
