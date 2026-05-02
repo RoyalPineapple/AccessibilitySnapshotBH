@@ -369,18 +369,19 @@ public final class AccessibilityHierarchyParser {
                     "UITabBar does not have the same number of tab views as tab items."
                 )
 
-                guard let index = tabBarButtons.firstIndex(of: element) else {
-                    fatalError("Can't find tab bar button in UITabBar")
+                // The view tree can change between when `element` was discovered and when its context is
+                // computed (dynamic tab bars, view recycling), so the element may no longer appear in the
+                // tab bar's button list. Fall through to the default `nil` context rather than crashing.
+                if let index = tabBarButtons.firstIndex(of: element) {
+                    // Use modulo to get the tab item index since there may be multiple sets of buttons.
+                    let tabIndex = index % tabBarItems.count
+
+                    return .tabBarItem(
+                        index: tabIndex + 1,
+                        count: tabBarItems.count,
+                        item: tabBarItems[tabIndex]
+                    )
                 }
-
-                // Use modulo to get the tab item index since there may be multiple sets of buttons
-                let tabIndex = index % tabBarItems.count
-
-                return .tabBarItem(
-                    index: tabIndex + 1,
-                    count: tabBarItems.count,
-                    item: tabBarItems[tabIndex]
-                )
             }
 
             // Views that are not `UITabBar`s can use the `.tabBar` accessibility trait to have their elements treated
@@ -402,10 +403,15 @@ public final class AccessibilityHierarchyParser {
                     tabBarCache[view] = accessibleElements
                 }
 
-                return .tab(
-                    index: accessibleElements.firstIndex(of: element)! + 1,
-                    count: accessibleElements.count
-                )
+                // Custom tab-bar-like containers may contain views that aren't in the recursive
+                // accessibility hierarchy (containers, decoration views, or views whose accessibility
+                // status changed since discovery). Fall through to the default `nil` context if so.
+                if let index = accessibleElements.firstIndex(of: element) {
+                    return .tab(
+                        index: index + 1,
+                        count: accessibleElements.count
+                    )
+                }
             }
 
         case let .accessibilityContainer(container):
