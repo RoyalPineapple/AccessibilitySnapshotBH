@@ -45,7 +45,6 @@ public extension UIAccessibilityTraits {
         (.radioButton, "radioButton"),
         (.launchIcon, "launchIcon"),
         (.statusBarElement, "statusBarElement"),
-        (.secureTextField, "secureTextField"),
         (.inactive, "inactive"),
         (.footer, "footer"),
         (.autoCorrectCandidate, "autoCorrectCandidate"),
