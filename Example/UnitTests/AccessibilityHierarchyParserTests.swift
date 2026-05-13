@@ -1126,18 +1126,22 @@ final class AccessibilityHierarchyParserTests: XCTestCase {
     // MARK: - Inconsistent Hierarchy Resilience
 
     /// A container that exposes accessibility elements via `accessibilityElements` but reports
-    /// `NSNotFound` when asked for their index. Previously triggered an `assert` inside
-    /// `context(for:from:...)`.
+    /// inconsistent live membership when asked for index/count. Real apps can hit this during
+    /// view transitions when custom containers have stale references.
     private final class InconsistentListContainer: UIView {
-        let child: UIAccessibilityElement
+        let firstChild: UIAccessibilityElement
+        let secondChild: UIAccessibilityElement
 
         override init(frame: CGRect) {
-            child = UIAccessibilityElement(accessibilityContainer: NSNull())
+            firstChild = UIAccessibilityElement(accessibilityContainer: NSNull())
+            secondChild = UIAccessibilityElement(accessibilityContainer: NSNull())
             super.init(frame: frame)
-            child.accessibilityLabel = "child"
-            child.accessibilityFrame = CGRect(x: 0, y: 0, width: 50, height: 50)
+            firstChild.accessibilityLabel = "first"
+            firstChild.accessibilityFrame = CGRect(x: 0, y: 0, width: 50, height: 50)
+            secondChild.accessibilityLabel = "second"
+            secondChild.accessibilityFrame = CGRect(x: 0, y: 60, width: 50, height: 50)
             accessibilityContainerType = .list
-            accessibilityElements = [child]
+            accessibilityElements = [firstChild, secondChild]
         }
 
         @available(*, unavailable)
@@ -1146,9 +1150,13 @@ final class AccessibilityHierarchyParserTests: XCTestCase {
         override func index(ofAccessibilityElement element: Any) -> Int {
             return NSNotFound
         }
+
+        override func accessibilityElementCount() -> Int {
+            return 0
+        }
     }
 
-    func testParserReturnsContextlessElementWhenContainerReportsNotFound() {
+    func testParserUsesCapturedContainerMembershipWhenLiveMembershipIsInconsistent() {
         let root = UIView(frame: CGRect(x: 0, y: 0, width: 200, height: 200))
         let container = InconsistentListContainer(frame: root.bounds)
         root.addSubview(container)
@@ -1160,7 +1168,7 @@ final class AccessibilityHierarchyParserTests: XCTestCase {
             userInterfaceIdiomProvider: TestUserInterfaceIdiomProvider(userInterfaceIdiom: .phone)
         ).flattenToElements().map { $0.description }
 
-        XCTAssertEqual(elements, ["child"], "Element should still be parsed even when its container drops it")
+        XCTAssertEqual(elements, ["first. List Start.", "second. List End."])
     }
 
     // MARK: - Private Helpers

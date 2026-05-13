@@ -221,7 +221,7 @@ public final class AccessibilityHierarchyParser {
     fileprivate enum ContextProvider {
         case superview(UIView)
 
-        case accessibilityContainer(NSObject)
+        case accessibilityContainer(NSObject, elementIndex: Int?, elementCount: Int?)
 
         case dataTable(UIAccessibilityContainerDataTable)
     }
@@ -409,33 +409,38 @@ public final class AccessibilityHierarchyParser {
                 )
             }
 
-        case let .accessibilityContainer(container):
-            let elementIndex = container.index(ofAccessibilityElement: element)
+        case let .accessibilityContainer(container, capturedElementIndex, capturedElementCount):
+            let elementIndex = capturedElementIndex ?? container.index(ofAccessibilityElement: element)
+            let elementCount = capturedElementCount ?? container.accessibilityElementCount()
 
             // The container may not actually contain the element if its accessibility tree is in
             // an inconsistent state. Drop context for this element rather than crashing.
-            guard elementIndex != NSNotFound else {
+            guard elementIndex != NSNotFound,
+                  elementIndex >= 0,
+                  elementCount > 0,
+                  elementIndex < elementCount
+            else {
                 return nil
             }
 
             if container is UISegmentedControl {
                 return .series(
                     index: elementIndex + 1,
-                    count: container.accessibilityElementCount()
+                    count: elementCount
                 )
             }
 
             if container.accessibilityTraits.contains(.tabBar) {
                 return .tab(
                     index: elementIndex + 1,
-                    count: container.accessibilityElementCount()
+                    count: elementCount
                 )
             }
 
             if container.accessibilityContainerType == .list {
                 if elementIndex == 0 {
                     return .listStart
-                } else if elementIndex == container.accessibilityElementCount() - 1 {
+                } else if elementIndex == elementCount - 1 {
                     return .listEnd
                 }
             }
@@ -443,7 +448,7 @@ public final class AccessibilityHierarchyParser {
             if container.accessibilityContainerType == .landmark {
                 if elementIndex == 0 {
                     return .landmarkStart
-                } else if elementIndex == container.accessibilityElementCount() - 1 {
+                } else if elementIndex == elementCount - 1 {
                     return .landmarkEnd
                 }
             }
@@ -473,7 +478,7 @@ public final class AccessibilityHierarchyParser {
                             && header !== cell
                             // The header is not read if it is not a cell in the table.
                             && dataTable.accessibilityDataTableCellElement(forRow: header.accessibilityRowRange().location, column: header.accessibilityColumnRange().location) === header
-                    } as! [NSObject]
+                    }.compactMap { $0 as? NSObject }
 
                 } else {
                     rowHeaders = []
@@ -497,7 +502,7 @@ public final class AccessibilityHierarchyParser {
                         }
 
                         return true
-                    } as! [NSObject]
+                    }.compactMap { $0 as? NSObject }
 
                 } else {
                     columnHeaders = []
@@ -786,10 +791,16 @@ private extension NSObject {
 
         } else if let accessibilityElements = accessibilityElements as? [NSObject] {
             var accessibilityHierarchyOfElements: [AccessibilityNode] = []
-            for element in accessibilityElements {
+            for (index, element) in accessibilityElements.enumerated() {
+                let childContextProvider = contextProvider ?? (
+                    providesContext ? providedContextAsContainer(
+                        elementIndex: index,
+                        elementCount: accessibilityElements.count
+                    ) : nil
+                )
                 accessibilityHierarchyOfElements.append(
                     contentsOf: element.recursiveAccessibilityHierarchy(
-                        contextProvider: contextProvider ?? (providesContext ? providedContextAsContainer() : nil)
+                        contextProvider: childContextProvider
                     )
                 )
             }
@@ -917,12 +928,15 @@ private extension NSObject {
 
     /// The form of context provider the object acts as for elements beneath it in the hierarchy when the object is
     /// being used as an accessibility container.
-    private func providedContextAsContainer() -> AccessibilityHierarchyParser.ContextProvider {
+    private func providedContextAsContainer(
+        elementIndex: Int? = nil,
+        elementCount: Int? = nil
+    ) -> AccessibilityHierarchyParser.ContextProvider {
         if accessibilityContainerType == .dataTable, let self = self as? UIAccessibilityContainerDataTable {
             return .dataTable(self)
         }
 
-        return .accessibilityContainer(self)
+        return .accessibilityContainer(self, elementIndex: elementIndex, elementCount: elementCount)
     }
 
     private func overridesElementFrame(with contextProvider: AccessibilityHierarchyParser.ContextProvider?) -> Bool {
