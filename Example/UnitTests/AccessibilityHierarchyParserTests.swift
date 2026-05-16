@@ -814,6 +814,48 @@ final class AccessibilityHierarchyParserTests: XCTestCase {
         }
     }
 
+    func testModalSubviewIsPreservedAsBoundaryContainer() {
+        let rootView = UIView(frame: CGRect(x: 0, y: 0, width: 320, height: 480))
+
+        let background = UILabel(frame: CGRect(x: 20, y: 20, width: 220, height: 40))
+        background.text = "Background"
+        rootView.addSubview(background)
+
+        let dismissRegion = UIView(frame: rootView.bounds)
+        dismissRegion.accessibilityViewIsModal = true
+        rootView.addSubview(dismissRegion)
+
+        let button = UIButton(type: .system)
+        button.setTitle("Popover Action", for: .normal)
+        button.frame = CGRect(x: 80, y: 120, width: 180, height: 44)
+        rootView.addSubview(button)
+
+        let parser = AccessibilityHierarchyParser()
+        let hierarchy = parser.parseAccessibilityHierarchy(in: rootView)
+
+        XCTAssertEqual(hierarchy.flattenToElements().compactMap(\.label), ["Popover Action"])
+        XCTAssertEqual(hierarchy.flattenToContainers().filter(\.isModalBoundary).count, 1)
+    }
+
+    func testModalContainerKeepsChildrenAndBoundaryFlag() {
+        let rootView = UIView(frame: CGRect(x: 0, y: 0, width: 320, height: 480))
+
+        let modal = UIView(frame: CGRect(x: 40, y: 80, width: 240, height: 160))
+        modal.accessibilityViewIsModal = true
+        rootView.addSubview(modal)
+
+        let button = UIButton(type: .system)
+        button.setTitle("Modal Action", for: .normal)
+        button.frame = CGRect(x: 20, y: 20, width: 180, height: 44)
+        modal.addSubview(button)
+
+        let parser = AccessibilityHierarchyParser()
+        let hierarchy = parser.parseAccessibilityHierarchy(in: rootView)
+
+        XCTAssertEqual(hierarchy.flattenToElements().compactMap(\.label), ["Modal Action"])
+        XCTAssertEqual(hierarchy.flattenToContainers().filter(\.isModalBoundary).count, 1)
+    }
+
     func testDataTableContainerCodable() throws {
         let container = AccessibilityContainer(
             type: .dataTable(rowCount: 5, columnCount: 4),

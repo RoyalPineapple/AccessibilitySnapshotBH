@@ -601,7 +601,8 @@ public final class AccessibilityHierarchyParser {
 
                     let container = AccessibilityContainer(
                         type: containerType,
-                        frame: frame
+                        frame: frame,
+                        isModalBoundary: info.isModalBoundary
                     )
                     containerVisitor?(container, info.view)
                     return [.container(container, children: mappedChildren)]
@@ -742,6 +743,7 @@ private struct ContainerInfo {
     let traits: UIAccessibilityTraits
     let rowCount: Int?
     let columnCount: Int?
+    let isModalBoundary: Bool
 }
 
 private enum AccessibilityNode {
@@ -861,6 +863,7 @@ private extension NSObject {
         let label = view.accessibilityLabel
         let value = view.accessibilityValue
         let identifier = (view as UIAccessibilityIdentification).accessibilityIdentifier
+        let isModalBoundary = view.accessibilityViewIsModal
 
         // Extract data table dimensions if applicable
         let (rowCount, columnCount): (Int?, Int?) = {
@@ -872,38 +875,39 @@ private extension NSObject {
             return (dataTable.accessibilityRowCount(), dataTable.accessibilityColumnCount())
         }()
 
-        // tabBar trait always creates container
-        if traits.contains(.tabBar) {
-            return ContainerInfo(view: view, type: containerType, label: label, value: value, identifier: identifier, traits: traits, rowCount: nil, columnCount: nil)
-        }
-
-        // list, landmark, dataTable always create container
-        if containerType == .list || containerType == .landmark || containerType == .dataTable {
-            return ContainerInfo(view: view, type: containerType, label: label, value: value, identifier: identifier, traits: traits, rowCount: rowCount, columnCount: columnCount)
-        }
-
-        // semanticGroup only if has label/value/identifier
-        if containerType == .semanticGroup, label != nil || value != nil || identifier != nil {
-            return ContainerInfo(view: view, type: containerType, label: label, value: value, identifier: identifier, traits: traits, rowCount: nil, columnCount: nil)
-        }
-
-        // UIScrollView subclasses emit a container for scroll boundary tracking.
-        if let scrollView = view as? UIScrollView, scrollView.isScrollEnabled {
-            return ContainerInfo(view: view, type: containerType, label: label, value: value, identifier: identifier, traits: traits, rowCount: nil, columnCount: nil)
-        }
-
         // Non-UIScrollView containers that wrap a UIScrollView child (SwiftUI's
         // PlatformContainer wraps HostingScrollView). Only match if the view
         // actually has a UIScrollView child — _accessibilityIsScrollable alone
         // is too broad (returns YES for every view inside a scrollable context).
-        if !(view is UIScrollView),
-           view.accessibilityIsScrollable,
-           view.subviews.contains(where: { $0 is UIScrollView })
-        {
-            return ContainerInfo(view: view, type: containerType, label: label, value: value, identifier: identifier, traits: traits, rowCount: nil, columnCount: nil)
+        let wrapsScrollableChild = !(view is UIScrollView)
+            && view.accessibilityIsScrollable
+            && view.subviews.contains(where: { $0 is UIScrollView })
+        let isSemanticGroup = containerType == .semanticGroup
+            && (label != nil || value != nil || identifier != nil)
+        let shouldEmitContainer = traits.contains(.tabBar)
+            || containerType == .list
+            || containerType == .landmark
+            || containerType == .dataTable
+            || isSemanticGroup
+            || ((view as? UIScrollView)?.isScrollEnabled == true)
+            || wrapsScrollableChild
+            || isModalBoundary
+
+        guard shouldEmitContainer else {
+            return nil
         }
 
-        return nil
+        return ContainerInfo(
+            view: view,
+            type: containerType,
+            label: label,
+            value: value,
+            identifier: identifier,
+            traits: traits,
+            rowCount: rowCount,
+            columnCount: columnCount,
+            isModalBoundary: isModalBoundary
+        )
     }
 
     /// Whether or not the object provides context to elements beneath it in the hierarchy.
