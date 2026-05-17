@@ -3,7 +3,7 @@ import UIKit
 /// A type alias for backwards compatibility.
 public typealias AccessibilityMarker = AccessibilityElement
 
-public struct AccessibilityElement: Hashable, Codable {
+public struct AccessibilityElement: Hashable, Codable, Sendable {
     /// Default number of rotor results to collect in each direction.
     public static let defaultRotorResultLimit: Int = 10
 
@@ -17,16 +17,24 @@ public struct AccessibilityElement: Hashable, Codable {
         case path(UIBezierPath)
     }
 
-    public struct CustomRotor: Equatable, CustomStringConvertible, Codable {
-        public struct ResultMarker: Equatable, CustomStringConvertible, Codable {
+    public struct CustomRotor: Equatable, CustomStringConvertible, Codable, Sendable {
+        public struct ResultMarker: Equatable, CustomStringConvertible, Codable, Sendable {
             public let elementDescription: String
             public let rangeDescription: String?
-            public let shape: Shape?
+            public let shape: AccessibilityShape?
 
-            public init(elementDescription: String, rangeDescription: String? = nil, shape: Shape? = nil) {
+            public init(elementDescription: String, rangeDescription: String? = nil, shape: AccessibilityShape? = nil) {
                 self.elementDescription = elementDescription
                 self.rangeDescription = rangeDescription
                 self.shape = shape
+            }
+
+            public init(elementDescription: String, rangeDescription: String? = nil, shape: Shape?) {
+                self.init(
+                    elementDescription: elementDescription,
+                    rangeDescription: rangeDescription,
+                    shape: shape.map(AccessibilityShape.init)
+                )
             }
 
             public var description: String {
@@ -39,9 +47,9 @@ public struct AccessibilityElement: Hashable, Codable {
 
         public var name: String
         public var resultMarkers: [AccessibilityElement.CustomRotor.ResultMarker] = []
-        public let limit: UIAccessibilityCustomRotor.CollectedRotorResults.Limit
+        public let limit: AccessibilityRotorResultLimit
 
-        public init(name: String, resultMarkers: [ResultMarker] = [], limit: UIAccessibilityCustomRotor.CollectedRotorResults.Limit = .none) {
+        public init(name: String, resultMarkers: [ResultMarker] = [], limit: AccessibilityRotorResultLimit = .none) {
             self.name = name
             self.resultMarkers = resultMarkers
             self.limit = limit
@@ -56,7 +64,7 @@ public struct AccessibilityElement: Hashable, Codable {
                 return
             }
             let collected = from.collectAllResults(nextLimit: resultLimit, previousLimit: resultLimit)
-            limit = collected.limit
+            limit = AccessibilityRotorResultLimit(collected.limit)
             resultMarkers = collected.results.compactMap { result in
                 guard let element = result.targetElement as? NSObject else { return nil }
                 var description = element.accessibilityDescription(context: context).description
@@ -83,7 +91,7 @@ public struct AccessibilityElement: Hashable, Codable {
         }
     }
 
-    public struct CustomContent: Codable, Equatable {
+    public struct CustomContent: Codable, Equatable, Sendable {
         public var label: String
         public var value: String
         public var isImportant: Bool
@@ -102,19 +110,23 @@ public struct AccessibilityElement: Hashable, Codable {
         }
     }
 
-    public struct CustomAction: Equatable, Codable {
+    public struct CustomAction: Equatable, Codable, Sendable {
         public var name: String
-        public var image: UIImage?
+        public var image: AccessibilityImageData?
 
-        public init(name: String, image: UIImage? = nil) {
+        public init(name: String, image: AccessibilityImageData? = nil) {
             self.name = name
             self.image = image
+        }
+
+        public init(name: String, image: UIImage?) {
+            self.init(name: name, image: AccessibilityImageData(image))
         }
 
         @available(iOS 14.0, *)
         init(from: UIAccessibilityCustomAction) {
             name = from.name
-            image = from.image
+            image = AccessibilityImageData(from.image)
         }
 
         private enum CodingKeys: String, CodingKey {
@@ -128,8 +140,8 @@ public struct AccessibilityElement: Hashable, Codable {
             name = try container.decode(String.self, forKey: .name)
 
             if let imageData = try container.decodeIfPresent(Data.self, forKey: .imageData) {
-                let scale = try container.decodeIfPresent(CGFloat.self, forKey: .imageScale) ?? 1.0
-                image = UIImage(data: imageData, scale: scale)
+                let scale = try container.decodeIfPresent(Double.self, forKey: .imageScale) ?? 1.0
+                image = AccessibilityImageData(pngData: imageData, scale: scale)
             } else {
                 image = nil
             }
@@ -139,8 +151,8 @@ public struct AccessibilityElement: Hashable, Codable {
             var container = encoder.container(keyedBy: CodingKeys.self)
             try container.encode(name, forKey: .name)
 
-            if let image = image, let pngData = image.pngData() {
-                try container.encode(pngData, forKey: .imageData)
+            if let image {
+                try container.encode(image.pngData, forKey: .imageData)
                 try container.encode(image.scale, forKey: .imageScale)
             }
         }
@@ -156,7 +168,7 @@ public struct AccessibilityElement: Hashable, Codable {
 
     public let value: String?
 
-    public let traits: UIAccessibilityTraits
+    public let traits: AccessibilityTraits
 
     /// A unique identifier for the element, primarily used in UI tests for locating and interacting with elements.
     /// This identifier is not visible to users.
@@ -173,10 +185,10 @@ public struct AccessibilityElement: Hashable, Codable {
     public let userInputLabels: [String]?
 
     /// The shape that will be highlighted on screen while the element is in focus.
-    public let shape: Shape
+    public let shape: AccessibilityShape
 
     /// The accessibility activation point, in the coordinate space of the view being snapshotted.
-    public let activationPoint: CGPoint
+    public let activationPoint: AccessibilityPoint
 
     /// Whether or not the `activationPoint` is the default activation point for the object.
     ///
@@ -206,12 +218,12 @@ public struct AccessibilityElement: Hashable, Codable {
         description: String,
         label: String?,
         value: String?,
-        traits: UIAccessibilityTraits,
+        traits: AccessibilityTraits,
         identifier: String?,
         hint: String?,
         userInputLabels: [String]?,
-        shape: Shape,
-        activationPoint: CGPoint,
+        shape: AccessibilityShape,
+        activationPoint: AccessibilityPoint,
         usesDefaultActivationPoint: Bool,
         customActions: [CustomAction],
         customContent: [CustomContent],
@@ -254,11 +266,56 @@ public struct AccessibilityElement: Hashable, Codable {
             hasher.combine(rect.size.width)
             hasher.combine(rect.size.height)
         case let .path(path):
+            let bounds = AccessibilityShape.path(path).frame
             hasher.combine(1)
-            hasher.combine(path.bounds.origin.x)
-            hasher.combine(path.bounds.origin.y)
-            hasher.combine(path.bounds.size.width)
-            hasher.combine(path.bounds.size.height)
+            hasher.combine(bounds.origin.x)
+            hasher.combine(bounds.origin.y)
+            hasher.combine(bounds.size.width)
+            hasher.combine(bounds.size.height)
         }
+    }
+}
+
+public extension AccessibilityElement {
+    var activationCGPoint: CGPoint {
+        activationPoint.cgPoint
+    }
+
+    /// UIKit compatibility initializer for callers constructing parser values
+    /// by hand. Stored geometry and traits remain parser-owned portable data.
+    init(
+        description: String,
+        label: String?,
+        value: String?,
+        traits: UIAccessibilityTraits,
+        identifier: String?,
+        hint: String?,
+        userInputLabels: [String]?,
+        shape: Shape,
+        activationPoint: CGPoint,
+        usesDefaultActivationPoint: Bool,
+        customActions: [CustomAction],
+        customContent: [CustomContent],
+        customRotors: [CustomRotor],
+        accessibilityLanguage: String?,
+        respondsToUserInteraction: Bool
+    ) {
+        self.init(
+            description: description,
+            label: label,
+            value: value,
+            traits: AccessibilityTraits(traits),
+            identifier: identifier,
+            hint: hint,
+            userInputLabels: userInputLabels,
+            shape: AccessibilityShape(shape),
+            activationPoint: AccessibilityPoint(activationPoint),
+            usesDefaultActivationPoint: usesDefaultActivationPoint,
+            customActions: customActions,
+            customContent: customContent,
+            customRotors: customRotors,
+            accessibilityLanguage: accessibilityLanguage,
+            respondsToUserInteraction: respondsToUserInteraction
+        )
     }
 }

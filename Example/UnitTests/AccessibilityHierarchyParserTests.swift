@@ -507,7 +507,7 @@ final class AccessibilityHierarchyParserTests: XCTestCase {
             shape: .frame(CGRect(x: 10, y: 20, width: 100, height: 44)),
             activationPoint: CGPoint(x: 60, y: 42),
             usesDefaultActivationPoint: true,
-            customActions: [AccessibilityElement.CustomAction(name: "Delete", image: nil)],
+            customActions: [AccessibilityElement.CustomAction(name: "Delete")],
             customContent: [],
             customRotors: [],
             accessibilityLanguage: "en-US",
@@ -632,16 +632,16 @@ final class AccessibilityHierarchyParserTests: XCTestCase {
 
     func testShapeCodableWithPath() throws {
         let path = UIBezierPath(roundedRect: CGRect(x: 10, y: 20, width: 100, height: 50), cornerRadius: 8)
-        let shape = AccessibilityElement.Shape.path(path)
+        let shape = AccessibilityShape(.path(path))
 
         let encoder = JSONEncoder()
         let data = try encoder.encode(shape)
 
         let decoder = JSONDecoder()
-        let decoded = try decoder.decode(AccessibilityElement.Shape.self, from: data)
+        let decoded = try decoder.decode(AccessibilityShape.self, from: data)
 
-        if case let .path(decodedPath) = decoded {
-            XCTAssertEqual(decodedPath.bounds, path.bounds)
+        if case .path = decoded {
+            XCTAssertEqual(decoded.frame, path.bounds)
         } else {
             XCTFail("Expected path shape")
         }
@@ -668,7 +668,7 @@ final class AccessibilityHierarchyParserTests: XCTestCase {
     }
 
     func testTraitsCodable() throws {
-        let traits: UIAccessibilityTraits = [.button, .selected, .header, .link]
+        let traits: AccessibilityTraits = [.button, .selected, .header, .link]
 
         let encoder = JSONEncoder()
         let data = try encoder.encode(traits)
@@ -681,13 +681,13 @@ final class AccessibilityHierarchyParserTests: XCTestCase {
         XCTAssertTrue(jsonArray.contains("link"), "Traits should include 'link'")
 
         let decoder = JSONDecoder()
-        let decoded = try decoder.decode(UIAccessibilityTraits.self, from: data)
+        let decoded = try decoder.decode(AccessibilityTraits.self, from: data)
 
         XCTAssertEqual(decoded, traits)
     }
 
     func testTraitsEmptyEncodesAsEmptyArray() throws {
-        let traits: UIAccessibilityTraits = []
+        let traits = AccessibilityTraits()
 
         let encoder = JSONEncoder()
         let data = try encoder.encode(traits)
@@ -696,7 +696,7 @@ final class AccessibilityHierarchyParserTests: XCTestCase {
         XCTAssertEqual(jsonString, "[]", "Empty traits should encode as empty array")
 
         let decoder = JSONDecoder()
-        let decoded = try decoder.decode(UIAccessibilityTraits.self, from: data)
+        let decoded = try decoder.decode(AccessibilityTraits.self, from: data)
 
         XCTAssertEqual(decoded, traits)
     }
@@ -708,17 +708,17 @@ final class AccessibilityHierarchyParserTests: XCTestCase {
         path.addLine(to: CGPoint(x: 100, y: 50))
         path.close()
 
-        let shape = AccessibilityElement.Shape.path(path)
+        let shape = AccessibilityShape(.path(path))
 
         let encoder = JSONEncoder()
         let data = try encoder.encode(shape)
 
         // Verify round-trip works
         let decoder = JSONDecoder()
-        let decoded = try decoder.decode(AccessibilityElement.Shape.self, from: data)
+        let decoded = try decoder.decode(AccessibilityShape.self, from: data)
 
-        if case let .path(decodedPath) = decoded {
-            XCTAssertEqual(decodedPath.bounds, path.bounds)
+        if case .path = decoded {
+            XCTAssertEqual(decoded.frame, path.bounds)
         } else {
             XCTFail("Expected path shape")
         }
@@ -748,12 +748,12 @@ final class AccessibilityHierarchyParserTests: XCTestCase {
 
         XCTAssertEqual(decoded.name, "Delete")
         XCTAssertNotNil(decoded.image, "Image should be decoded")
-        XCTAssertEqual(decoded.image?.size, testImage.size, "Image size should be preserved")
-        XCTAssertEqual(decoded.image?.scale, testImage.scale, "Image scale should be preserved")
+        XCTAssertEqual(decoded.image?.uiImage?.size, testImage.size, "Image size should be preserved")
+        XCTAssertEqual(decoded.image?.scale, Double(testImage.scale), "Image scale should be preserved")
     }
 
     func testCustomActionWithoutImageCodable() throws {
-        let action = AccessibilityElement.CustomAction(name: "Edit", image: nil)
+        let action = AccessibilityElement.CustomAction(name: "Edit")
 
         let encoder = JSONEncoder()
         let data = try encoder.encode(action)

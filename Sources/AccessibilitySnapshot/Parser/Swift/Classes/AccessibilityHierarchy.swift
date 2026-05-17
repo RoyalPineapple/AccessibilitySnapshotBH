@@ -1,7 +1,7 @@
 // MARK: - Hierarchy Node
 
 /// A node in the accessibility hierarchy tree
-public enum AccessibilityHierarchy: Equatable, Codable {
+public enum AccessibilityHierarchy: Equatable, Codable, Sendable {
     /// A leaf node representing an accessibility element
     /// - Parameters:
     ///   - AccessibilityElement: The accessibility element data

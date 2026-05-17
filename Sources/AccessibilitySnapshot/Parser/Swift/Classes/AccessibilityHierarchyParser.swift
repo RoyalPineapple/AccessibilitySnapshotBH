@@ -579,7 +579,7 @@ public final class AccessibilityHierarchyParser {
                             }
                             contentSize = maxChild.size
                         }
-                        containerType = .scrollable(contentSize: contentSize)
+                        containerType = .scrollable(contentSize: AccessibilitySize(contentSize))
                     } else if info.traits.contains(.tabBar) {
                         containerType = .tabBar
                     } else {

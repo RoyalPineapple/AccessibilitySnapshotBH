@@ -1,15 +1,16 @@
+import AccessibilitySnapshotParser
 import SwiftUI
 import UIKit
 
 /// Displays trait icons as pills matching the UserInputLabelsView style.
 @available(iOS 16.0, *)
 struct TraitsView: View {
-    let traits: UIAccessibilityTraits
+    let traits: AccessibilityTraits
 
     private typealias Tokens = DesignTokens.TraitPill
 
     private var displayableTraits: [UnspokenTrait] {
-        UnspokenTrait.from(traits)
+        UnspokenTrait.from(traits.uiAccessibilityTraits)
     }
 
     var body: some View {
