@@ -1,4 +1,4 @@
-import UIKit
+import Foundation
 
 /// A type alias for backwards compatibility.
 public typealias AccessibilityMarker = AccessibilityElement
@@ -8,14 +8,6 @@ public struct AccessibilityElement: Hashable, Codable, Sendable {
     public static let defaultRotorResultLimit: Int = 10
 
     // MARK: - Public Types
-
-    public enum Shape: Equatable {
-        /// Accessibility frame, in the coordinate space of the view being snapshotted.
-        case frame(CGRect)
-
-        /// Accessibility path, in the coordinate space of the view being snapshotted.
-        case path(UIBezierPath)
-    }
 
     public struct CustomRotor: Equatable, CustomStringConvertible, Codable, Sendable {
         public struct ResultMarker: Equatable, CustomStringConvertible, Codable, Sendable {
@@ -27,14 +19,6 @@ public struct AccessibilityElement: Hashable, Codable, Sendable {
                 self.elementDescription = elementDescription
                 self.rangeDescription = rangeDescription
                 self.shape = shape
-            }
-
-            public init(elementDescription: String, rangeDescription: String? = nil, shape: Shape?) {
-                self.init(
-                    elementDescription: elementDescription,
-                    rangeDescription: rangeDescription,
-                    shape: shape.map(AccessibilityShape.init)
-                )
             }
 
             public var description: String {
@@ -55,37 +39,6 @@ public struct AccessibilityElement: Hashable, Codable, Sendable {
             self.limit = limit
         }
 
-        init?(from: UIAccessibilityCustomRotor, parentElement: NSObject, root: UIView, context: AccessibilityHierarchyParser.Context? = nil, resultLimit: Int) {
-            guard from.isKnownRotorType else { return nil }
-            name = from.displayName(locale: parentElement.accessibilityLanguage)
-            guard resultLimit > 0 else {
-                limit = .none
-                resultMarkers = []
-                return
-            }
-            let collected = from.collectAllResults(nextLimit: resultLimit, previousLimit: resultLimit)
-            limit = AccessibilityRotorResultLimit(collected.limit)
-            resultMarkers = collected.results.compactMap { result in
-                guard let element = result.targetElement as? NSObject else { return nil }
-                var description = element.accessibilityDescription(context: context).description
-                var shape: Shape? = AccessibilityHierarchyParser.accessibilityShape(for: element, in: root)
-
-                if let range = result.targetRange,
-                   let input = element as? UITextInput
-                {
-                    if let path = input.accessibilityPath(for: range) {
-                        let converted = root.convert(path, from: input as? UIView)
-                        shape = .path(converted)
-                    }
-                    if let substring = input.text(in: range) {
-                        description = substring
-                    }
-                    return ResultMarker(elementDescription: description, rangeDescription: range.formatted(in: input), shape: shape)
-                }
-                return ResultMarker(elementDescription: description, rangeDescription: nil, shape: shape)
-            }
-        }
-
         public var description: String {
             return name + ": " + resultMarkers.map { $0.description }.joined(separator: "\n")
         }
@@ -101,13 +54,6 @@ public struct AccessibilityElement: Hashable, Codable, Sendable {
             self.value = value
             self.isImportant = isImportant
         }
-
-        @available(iOS 14.0, *)
-        init(from: AXCustomContent) {
-            label = from.label
-            value = from.value
-            isImportant = from.importance == .high
-        }
     }
 
     public struct CustomAction: Equatable, Codable, Sendable {
@@ -117,16 +63,6 @@ public struct AccessibilityElement: Hashable, Codable, Sendable {
         public init(name: String, image: AccessibilityImageData? = nil) {
             self.name = name
             self.image = image
-        }
-
-        public init(name: String, image: UIImage?) {
-            self.init(name: name, image: AccessibilityImageData(image))
-        }
-
-        @available(iOS 14.0, *)
-        init(from: UIAccessibilityCustomAction) {
-            name = from.name
-            image = AccessibilityImageData(from.image)
         }
 
         private enum CodingKeys: String, CodingKey {
@@ -214,7 +150,7 @@ public struct AccessibilityElement: Hashable, Codable, Sendable {
 
     // MARK: - Initialization
 
-    init(
+    public init(
         description: String,
         label: String?,
         value: String?,
@@ -273,49 +209,5 @@ public struct AccessibilityElement: Hashable, Codable, Sendable {
             hasher.combine(bounds.size.width)
             hasher.combine(bounds.size.height)
         }
-    }
-}
-
-public extension AccessibilityElement {
-    var activationCGPoint: CGPoint {
-        activationPoint.cgPoint
-    }
-
-    /// UIKit compatibility initializer for callers constructing parser values
-    /// by hand. Stored geometry and traits remain parser-owned portable data.
-    init(
-        description: String,
-        label: String?,
-        value: String?,
-        traits: UIAccessibilityTraits,
-        identifier: String?,
-        hint: String?,
-        userInputLabels: [String]?,
-        shape: Shape,
-        activationPoint: CGPoint,
-        usesDefaultActivationPoint: Bool,
-        customActions: [CustomAction],
-        customContent: [CustomContent],
-        customRotors: [CustomRotor],
-        accessibilityLanguage: String?,
-        respondsToUserInteraction: Bool
-    ) {
-        self.init(
-            description: description,
-            label: label,
-            value: value,
-            traits: AccessibilityTraits(traits),
-            identifier: identifier,
-            hint: hint,
-            userInputLabels: userInputLabels,
-            shape: AccessibilityShape(shape),
-            activationPoint: AccessibilityPoint(activationPoint),
-            usesDefaultActivationPoint: usesDefaultActivationPoint,
-            customActions: customActions,
-            customContent: customContent,
-            customRotors: customRotors,
-            accessibilityLanguage: accessibilityLanguage,
-            respondsToUserInteraction: respondsToUserInteraction
-        )
     }
 }

@@ -1,4 +1,5 @@
 import Accessibility
+import AccessibilitySnapshotModel
 import SwiftUI
 import UIKit
 
@@ -246,12 +247,12 @@ public final class AccessibilityHierarchyParser {
             description: description,
             label: object.accessibilityLabel,
             value: object.accessibilityValue,
-            traits: object.accessibilityTraits,
+            traits: AccessibilityTraits(object.accessibilityTraits),
             identifier: object.identifier,
             hint: hint,
             userInputLabels: object.accessibilityUserInputLabels,
             shape: Self.accessibilityShape(for: object, in: root),
-            activationPoint: root.convert(activationPoint, from: nil),
+            activationPoint: AccessibilityPoint(root.convert(activationPoint, from: nil)),
             usesDefaultActivationPoint: Self.usesDefaultActivationPoint(
                 element: object,
                 activationPoint: activationPoint,
@@ -622,15 +623,15 @@ public final class AccessibilityHierarchyParser {
 extension AccessibilityHierarchyParser {
     /// Returns the shape of the accessibility element in the root view's coordinate space.
     /// VoiceOver prefers an accessibilityPath if available when drawing the bounding box, but the accessibilityFrame is always used for sort order.
-    static func accessibilityShape(for element: NSObject, in root: UIView, preferPath: Bool = true) -> AccessibilityMarker.Shape {
+    static func accessibilityShape(for element: NSObject, in root: UIView, preferPath: Bool = true) -> AccessibilityShape {
         if let accessibilityPath = element.accessibilityPath, preferPath, accessibilityPath.hasFiniteBounds {
-            return .path(root.convert(accessibilityPath, from: nil))
+            return AccessibilityShape(root.convert(accessibilityPath, from: nil))
 
         } else if let element = element as? UIAccessibilityElement, let container = element.accessibilityContainer, !element.accessibilityFrameInContainerSpace.isNull {
-            return .frame(container.convert(element.accessibilityFrameInContainerSpace, to: root))
+            return .frame(AccessibilityRect(container.convert(element.accessibilityFrameInContainerSpace, to: root)))
 
         } else {
-            return .frame(root.convert(element.accessibilityFrame, from: nil))
+            return .frame(AccessibilityRect(root.convert(element.accessibilityFrame, from: nil)))
         }
     }
 
@@ -699,7 +700,7 @@ private extension AccessibilityHierarchyParser {
              let .group(_, _, frameProvider?, _):
             switch accessibilityShape(for: frameProvider, in: root, preferPath: false) {
             case let .frame(rect):
-                return rect
+                return rect.cgRect
             default:
                 return frameProvider.accessibilityFrame
             }

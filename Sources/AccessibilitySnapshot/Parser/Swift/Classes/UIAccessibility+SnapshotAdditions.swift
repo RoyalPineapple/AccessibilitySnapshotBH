@@ -1,3 +1,4 @@
+import AccessibilitySnapshotModel
 import UIKit
 
 extension NSObject {
