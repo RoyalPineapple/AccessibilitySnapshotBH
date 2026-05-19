@@ -786,6 +786,8 @@ private extension NSObject {
         // containers whose children have non-zero frames (e.g., floating bar search fields). Pruning zero-frame
         // views causes the parser to miss accessible elements inside these wrappers. VoiceOver's
         // _accessibilityLeafDescendants does not prune by frame size.
+        let explicitAccessibilityElements = resolvedAccessibilityElements()
+
         if let `self` = self as? UIView, self.isHidden || self.alpha <= 0 {
             return []
         }
@@ -795,7 +797,7 @@ private extension NSObject {
         if isAccessibilityElement {
             recursiveAccessibilityHierarchy.append(.element(self, contextProvider: contextProvider))
 
-        } else if let accessibilityElements = accessibilityElements as? [NSObject] {
+        } else if let accessibilityElements = explicitAccessibilityElements {
             var accessibilityHierarchyOfElements: [AccessibilityNode] = []
             for (index, element) in accessibilityElements.enumerated() {
                 let childContextProvider = contextProvider ?? (
@@ -854,6 +856,38 @@ private extension NSObject {
         }
 
         return recursiveAccessibilityHierarchy
+    }
+
+    /// Returns the explicit accessibility elements exposed by this object. When
+    /// `accessibilityElements` is set (including to an empty array) it is used directly. When it is
+    /// `nil`, this falls back to the `accessibilityElementCount()` / `accessibilityElement(at:)`
+    /// container APIs, mirroring the order in which `UIAccessibilityContainer` consumers (including
+    /// VoiceOver) resolve elements. Returns `nil` when the object does not act as an explicit
+    /// accessibility container.
+    private func resolvedAccessibilityElements() -> [NSObject]? {
+        if let elements = accessibilityElements as? [NSObject] {
+            return elements
+        }
+
+        let count = accessibilityElementCount()
+        guard count > 0 else {
+            return nil
+        }
+
+        var elements: [NSObject] = []
+        elements.reserveCapacity(count)
+        for index in 0 ..< count {
+            if let element = accessibilityElement(at: index) as? NSObject {
+                elements.append(element)
+            }
+        }
+        if elements.count != count {
+            print(
+                "[AccessibilitySnapshot] Warning: \(type(of: self)) reported accessibilityElementCount() == "
+                    + "\(count) but only \(elements.count) element(s) were returned by accessibilityElement(at:)."
+            )
+        }
+        return elements.isEmpty ? nil : elements
     }
 
     /// Creates ContainerInfo for a view if it represents a meaningful accessibility container.
