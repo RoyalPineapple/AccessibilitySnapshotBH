@@ -790,16 +790,14 @@ private extension NSObject {
         // containers whose children have non-zero frames (e.g., floating bar search fields). Pruning zero-frame
         // views causes the parser to miss accessible elements inside these wrappers. VoiceOver's
         // _accessibilityLeafDescendants does not prune by frame size.
-        let explicitAccessibilityElements = resolvedAccessibilityElements(
-            allowContainerFallback: shouldUseAccessibilityContainerElements
-        )
-
         var recursiveAccessibilityHierarchy: [AccessibilityNode] = []
 
         if isAccessibilityElement {
             recursiveAccessibilityHierarchy.append(.element(self, contextProvider: contextProvider))
 
-        } else if let accessibilityElements = explicitAccessibilityElements {
+        } else if let accessibilityElements = resolvedAccessibilityElements(
+            allowContainerFallback: shouldUseAccessibilityContainerElements
+        ) {
             var accessibilityHierarchyOfElements: [AccessibilityNode] = []
             for (index, element) in accessibilityElements.enumerated() {
                 let childContextProvider = contextProvider ?? (
@@ -897,16 +895,26 @@ private extension NSObject {
     }
 
     private var shouldUseAccessibilityContainerElements: Bool {
+        if isAppleFrameworkObject {
+            return false
+        }
+        if type(of: self) == NSObject.self {
+            return false
+        }
         guard let view = self as? UIView else {
             return true
-        }
-        if view.isAppleFrameworkView {
-            return false
         }
         if type(of: view) == UIView.self {
             return false
         }
         return !view.containsQueuingScrollViewInSubtree
+    }
+
+    private var isAppleFrameworkObject: Bool {
+        let bundleIdentifier = Bundle(for: type(of: self)).bundleIdentifier ?? ""
+        return bundleIdentifier == "com.apple.UIKitCore"
+            || bundleIdentifier == "com.apple.SwiftUI"
+            || bundleIdentifier == "com.apple.Foundation"
     }
 
     /// Creates ContainerInfo for a view if it represents a meaningful accessibility container.
@@ -1076,12 +1084,6 @@ private extension UIView {
         return className == "_UIQueuingScrollView"
             || className.hasSuffix("._UIQueuingScrollView")
             || className.hasSuffix("._UIQueuingScrollView_Paging")
-    }
-
-    var isAppleFrameworkView: Bool {
-        let bundleIdentifier = Bundle(for: type(of: self)).bundleIdentifier ?? ""
-        return bundleIdentifier == "com.apple.UIKitCore"
-            || bundleIdentifier == "com.apple.SwiftUI"
     }
 }
 
