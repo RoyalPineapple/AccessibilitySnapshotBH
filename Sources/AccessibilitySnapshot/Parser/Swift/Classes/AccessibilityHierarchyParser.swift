@@ -777,6 +777,10 @@ private extension NSObject {
             return []
         }
 
+        if let `self` = self as? UIView, self.isHidden || self.alpha <= 0 {
+            return []
+        }
+
         // Ignore elements that are views if they are not visible on the screen, either due to visibility or
         // alpha. VoiceOver actually has some very low alpha threshold at which it will still display an element
         // (presumably to account for animations and/or rounding error). We use an alpha threshold of zero since that
@@ -786,11 +790,9 @@ private extension NSObject {
         // containers whose children have non-zero frames (e.g., floating bar search fields). Pruning zero-frame
         // views causes the parser to miss accessible elements inside these wrappers. VoiceOver's
         // _accessibilityLeafDescendants does not prune by frame size.
-        let explicitAccessibilityElements = resolvedAccessibilityElements()
-
-        if let `self` = self as? UIView, self.isHidden || self.alpha <= 0 {
-            return []
-        }
+        let explicitAccessibilityElements = resolvedAccessibilityElements(
+            allowContainerFallback: shouldUseAccessibilityContainerElements
+        )
 
         var recursiveAccessibilityHierarchy: [AccessibilityNode] = []
 
@@ -864,9 +866,13 @@ private extension NSObject {
     /// container APIs, mirroring the order in which `UIAccessibilityContainer` consumers (including
     /// VoiceOver) resolve elements. Returns `nil` when the object does not act as an explicit
     /// accessibility container.
-    private func resolvedAccessibilityElements() -> [NSObject]? {
+    private func resolvedAccessibilityElements(allowContainerFallback: Bool = true) -> [NSObject]? {
         if let elements = accessibilityElements as? [NSObject] {
             return elements
+        }
+
+        guard allowContainerFallback else {
+            return nil
         }
 
         let count = accessibilityElementCount()
@@ -888,6 +894,19 @@ private extension NSObject {
             )
         }
         return elements.isEmpty ? nil : elements
+    }
+
+    private var shouldUseAccessibilityContainerElements: Bool {
+        guard let view = self as? UIView else {
+            return true
+        }
+        if view.isAppleFrameworkView {
+            return false
+        }
+        if type(of: view) == UIView.self {
+            return false
+        }
+        return !view.containsQueuingScrollViewInSubtree
     }
 
     /// Creates ContainerInfo for a view if it represents a meaningful accessibility container.
@@ -1034,6 +1053,35 @@ private extension UIView {
         }
 
         return collect(from: self)
+    }
+}
+
+private extension UIView {
+    var containsQueuingScrollViewInSubtree: Bool {
+        if isQueuingScrollView {
+            return true
+        }
+        var stack = subviews
+        while let view = stack.popLast() {
+            if view.isQueuingScrollView {
+                return true
+            }
+            stack.append(contentsOf: view.subviews)
+        }
+        return false
+    }
+
+    var isQueuingScrollView: Bool {
+        let className = NSStringFromClass(type(of: self))
+        return className == "_UIQueuingScrollView"
+            || className.hasSuffix("._UIQueuingScrollView")
+            || className.hasSuffix("._UIQueuingScrollView_Paging")
+    }
+
+    var isAppleFrameworkView: Bool {
+        let bundleIdentifier = Bundle(for: type(of: self)).bundleIdentifier ?? ""
+        return bundleIdentifier == "com.apple.UIKitCore"
+            || bundleIdentifier == "com.apple.SwiftUI"
     }
 }
 
