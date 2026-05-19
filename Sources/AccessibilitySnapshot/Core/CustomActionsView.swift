@@ -10,7 +10,7 @@ extension AccessibilitySnapshotView {
                 let iconView: UIView
                 if let image = $0.image {
                     let imageView = UIImageView()
-                    imageView.image = image
+                    imageView.image = image.uiImage
                     imageView.tintColor = .darkGray
                     iconView = imageView
                 } else {

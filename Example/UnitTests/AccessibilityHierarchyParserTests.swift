@@ -310,6 +310,79 @@ final class AccessibilityHierarchyParserTests: XCTestCase {
         }
     }
 
+    func testNonScrollableScrollViewIsFlattened() {
+        let rootView = UIView(frame: .init(x: 0, y: 0, width: 100, height: 100))
+
+        let scrollView = UIScrollView(frame: rootView.bounds)
+        scrollView.contentSize = CGSize(width: 100, height: 100)
+        rootView.addSubview(scrollView)
+
+        let child = UIView(frame: .init(x: 10, y: 10, width: 30, height: 30))
+        child.isAccessibilityElement = true
+        child.accessibilityLabel = "Child"
+        child.accessibilityFrame = child.frame
+        scrollView.addSubview(child)
+
+        let parser = AccessibilityHierarchyParser()
+        let hierarchy = parser.parseAccessibilityHierarchy(in: rootView)
+
+        XCTAssertTrue(hierarchy.flattenToContainers().isEmpty)
+        XCTAssertEqual(hierarchy.flattenToElements().map { $0.description }, ["Child"])
+    }
+
+    func testScrollableScrollViewIsPreserved() {
+        let rootView = UIView(frame: .init(x: 0, y: 0, width: 100, height: 100))
+
+        let scrollView = UIScrollView(frame: rootView.bounds)
+        scrollView.contentSize = CGSize(width: 100, height: 160)
+        rootView.addSubview(scrollView)
+
+        let child = UIView(frame: .init(x: 10, y: 10, width: 30, height: 30))
+        child.isAccessibilityElement = true
+        child.accessibilityLabel = "Child"
+        child.accessibilityFrame = child.frame
+        scrollView.addSubview(child)
+
+        let parser = AccessibilityHierarchyParser()
+        let hierarchy = parser.parseAccessibilityHierarchy(in: rootView)
+
+        guard case let .container(container, children) = hierarchy.first else {
+            XCTFail("Expected scrollable container")
+            return
+        }
+
+        guard case let .scrollable(contentSize) = container.type else {
+            XCTFail("Expected scrollable container type")
+            return
+        }
+
+        XCTAssertEqual(contentSize.cgSize, scrollView.contentSize)
+        XCTAssertEqual(children.flattenToElements().map { $0.description }, ["Child"])
+    }
+
+    func testNonScrollableWrapperAroundScrollViewIsFlattened() {
+        let rootView = UIView(frame: .init(x: 0, y: 0, width: 100, height: 100))
+
+        let wrapper = ScrollableWrapperTestView(frame: rootView.bounds)
+        rootView.addSubview(wrapper)
+
+        let scrollView = UIScrollView(frame: wrapper.bounds)
+        scrollView.contentSize = wrapper.bounds.size
+        wrapper.addSubview(scrollView)
+
+        let child = UIView(frame: .init(x: 10, y: 10, width: 30, height: 30))
+        child.isAccessibilityElement = true
+        child.accessibilityLabel = "Child"
+        child.accessibilityFrame = child.frame
+        scrollView.addSubview(child)
+
+        let parser = AccessibilityHierarchyParser()
+        let hierarchy = parser.parseAccessibilityHierarchy(in: rootView)
+
+        XCTAssertTrue(hierarchy.flattenToContainers().isEmpty)
+        XCTAssertEqual(hierarchy.flattenToElements().map { $0.description }, ["Child"])
+    }
+
     func testNestedContainersPreserveHierarchy() {
         // Use NestedContainersTestView which mirrors ContainerHierarchyViewController's NestedContainersDemoView
         let nestedView = NestedContainersTestView(frame: CGRect(x: 0, y: 0, width: 200, height: 100))
@@ -1245,6 +1318,13 @@ private final class ActivationPointTestView: UIView {
     override var accessibilityPath: UIBezierPath? {
         get { overriddenPath ?? super.accessibilityPath }
         set { overriddenPath = newValue }
+    }
+}
+
+private final class ScrollableWrapperTestView: UIView {
+    @objc(_accessibilityIsScrollable)
+    func accessibilityIsScrollableForTesting() -> Bool {
+        return true
     }
 }
 

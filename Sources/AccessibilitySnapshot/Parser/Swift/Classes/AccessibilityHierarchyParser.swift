@@ -566,20 +566,7 @@ public final class AccessibilityHierarchyParser {
                     // contentSize directly; for non-UIScrollViews (SwiftUI PlatformContainer)
                     // we derive content extent from the largest child subview frame.
                     let containerType: AccessibilityContainer.ContainerType
-                    if info.view is UIScrollView
-                        || (info.view.accessibilityIsScrollable && info.view.subviews.contains(where: { $0 is UIScrollView }))
-                    {
-                        let contentSize: CGSize
-                        if let scrollView = info.view as? UIScrollView {
-                            contentSize = scrollView.contentSize
-                        } else {
-                            // Derive content size from children (e.g. PlatformGroupContainer
-                            // inside PlatformContainer has the full content frame)
-                            let maxChild = info.view.subviews.reduce(CGRect.zero) { union, child in
-                                union.union(child.frame)
-                            }
-                            contentSize = maxChild.size
-                        }
+                    if let contentSize = info.scrollableContentSize {
                         containerType = .scrollable(contentSize: AccessibilitySize(contentSize))
                     } else if info.traits.contains(.tabBar) {
                         containerType = .tabBar
@@ -734,6 +721,21 @@ private extension UIBezierPath {
     }
 }
 
+private extension CGSize {
+    func isScrollableContentSize(for containerSize: CGSize, tolerance: CGFloat = 0.5) -> Bool {
+        guard isFinite, containerSize.isFinite else {
+            return false
+        }
+
+        return width > containerSize.width + tolerance
+            || height > containerSize.height + tolerance
+    }
+
+    var isFinite: Bool {
+        width.isFinite && height.isFinite
+    }
+}
+
 /// Captures container information at node creation time, avoiding the need to re-derive it later.
 private struct ContainerInfo {
     let view: UIView
@@ -742,6 +744,7 @@ private struct ContainerInfo {
     let value: String?
     let identifier: String?
     let traits: UIAccessibilityTraits
+    let scrollableContentSize: CGSize?
     let rowCount: Int?
     let columnCount: Int?
     let isModalBoundary: Bool
@@ -954,9 +957,7 @@ private extension NSObject {
         // PlatformContainer wraps HostingScrollView). Only match if the view
         // actually has a UIScrollView child — _accessibilityIsScrollable alone
         // is too broad (returns YES for every view inside a scrollable context).
-        let wrapsScrollableChild = !(view is UIScrollView)
-            && view.accessibilityIsScrollable
-            && view.subviews.contains(where: { $0 is UIScrollView })
+        let scrollableContentSize = scrollableContentSize(for: view)
         let isSemanticGroup = containerType == .semanticGroup
             && (label != nil || value != nil || identifier != nil)
         let shouldEmitContainer = traits.contains(.tabBar)
@@ -964,8 +965,7 @@ private extension NSObject {
             || containerType == .landmark
             || containerType == .dataTable
             || isSemanticGroup
-            || ((view as? UIScrollView)?.isScrollEnabled == true)
-            || wrapsScrollableChild
+            || scrollableContentSize != nil
             || isModalBoundary
 
         guard shouldEmitContainer else {
@@ -979,10 +979,41 @@ private extension NSObject {
             value: value,
             identifier: identifier,
             traits: traits,
+            scrollableContentSize: scrollableContentSize,
             rowCount: rowCount,
             columnCount: columnCount,
             isModalBoundary: isModalBoundary
         )
+    }
+
+    /// Returns scrollable content size only when the content exceeds the view's bounds.
+    ///
+    /// UIKit and SwiftUI can expose nested scroll wrappers that are marked scrollable even when
+    /// their content cannot move. Treating those wrappers as transparent preserves their children
+    /// without creating duplicate scrollable containers for the same visual frame.
+    private func scrollableContentSize(for view: UIView) -> CGSize? {
+        let contentSize: CGSize
+        if let scrollView = view as? UIScrollView {
+            guard scrollView.isScrollEnabled else {
+                return nil
+            }
+            contentSize = scrollView.contentSize
+        } else {
+            guard view.accessibilityIsScrollable,
+                  view.subviews.contains(where: { $0 is UIScrollView })
+            else {
+                return nil
+            }
+
+            // Derive content size from children (e.g. PlatformGroupContainer
+            // inside PlatformContainer has the full content frame).
+            let contentFrame = view.subviews.reduce(CGRect.zero) { union, child in
+                union.union(child.frame)
+            }
+            contentSize = contentFrame.size
+        }
+
+        return contentSize.isScrollableContentSize(for: view.bounds.size) ? contentSize : nil
     }
 
     /// Whether or not the object provides context to elements beneath it in the hierarchy.
