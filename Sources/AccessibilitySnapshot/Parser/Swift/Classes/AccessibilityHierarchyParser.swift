@@ -901,13 +901,10 @@ private extension NSObject {
         if type(of: self) == NSObject.self {
             return false
         }
-        guard let view = self as? UIView else {
-            return true
-        }
-        if type(of: view) == UIView.self {
+        if self is UIView {
             return false
         }
-        return !view.containsQueuingScrollViewInSubtree
+        return overridesAccessibilityContainerIndexing
     }
 
     private var isAppleFrameworkObject: Bool {
@@ -915,6 +912,22 @@ private extension NSObject {
         return bundleIdentifier == "com.apple.UIKitCore"
             || bundleIdentifier == "com.apple.SwiftUI"
             || bundleIdentifier == "com.apple.Foundation"
+    }
+
+    private var overridesAccessibilityContainerIndexing: Bool {
+        let selectors = [
+            #selector(NSObject.accessibilityElementCount),
+            #selector(NSObject.accessibilityElement(at:)),
+        ]
+        return selectors.contains { selector in
+            guard let objectMethod = class_getInstanceMethod(type(of: self), selector) else {
+                return false
+            }
+            guard let baseMethod = class_getInstanceMethod(NSObject.self, selector) else {
+                return true
+            }
+            return method_getImplementation(objectMethod) != method_getImplementation(baseMethod)
+        }
     }
 
     /// Creates ContainerInfo for a view if it represents a meaningful accessibility container.
@@ -1061,29 +1074,6 @@ private extension UIView {
         }
 
         return collect(from: self)
-    }
-}
-
-private extension UIView {
-    var containsQueuingScrollViewInSubtree: Bool {
-        if isQueuingScrollView {
-            return true
-        }
-        var stack = subviews
-        while let view = stack.popLast() {
-            if view.isQueuingScrollView {
-                return true
-            }
-            stack.append(contentsOf: view.subviews)
-        }
-        return false
-    }
-
-    var isQueuingScrollView: Bool {
-        let className = NSStringFromClass(type(of: self))
-        return className == "_UIQueuingScrollView"
-            || className.hasSuffix("._UIQueuingScrollView")
-            || className.hasSuffix("._UIQueuingScrollView_Paging")
     }
 }
 
