@@ -154,10 +154,10 @@ private struct MarkerOverlayView: View {
                 Rectangle()
                     .fill(color.opacity(0.3))
                     .frame(width: rect.width, height: rect.height)
-                    .position(x: rect.midX, y: rect.midY)
+                    .position(x: rect.cgRect.midX, y: rect.cgRect.midY)
 
-            case let .path(path):
-                Path(path.cgPath)
+            case .path:
+                Path(marker.shape.cgPath)
                     .stroke(color.opacity(0.3), lineWidth: 4)
 
                 if shouldShowActivationPoint {

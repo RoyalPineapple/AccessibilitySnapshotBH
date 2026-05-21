@@ -60,8 +60,8 @@ public struct ElementOverlay: View {
     private var shapeView: some View {
         if let bounds = frameBounds {
             roundedRectOverlay(rect: bounds)
-        } else if case let .path(path) = shape {
-            pathOverlay(path: path.cgPath)
+        } else if case .path = shape {
+            pathOverlay(path: shape.cgPath)
         }
     }
 
@@ -108,8 +108,8 @@ public struct ElementOverlay: View {
     private var badgeCenter: CGPoint {
         if let bounds = frameBounds {
             return BadgePlacement.badgeCenter(in: bounds)
-        } else if case let .path(path) = shape {
-            return BadgePlacement.badgeCenter(for: path.cgPath)
+        } else if case .path = shape {
+            return BadgePlacement.badgeCenter(for: shape.cgPath)
         }
         return .zero
     }

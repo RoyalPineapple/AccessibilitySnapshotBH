@@ -82,7 +82,7 @@ public struct AccessibilitySnapshotView<Content: View>: View {
 
                     if shouldShowActivationPoint(for: marker) {
                         ActivationPointView(
-                            position: marker.activationPoint,
+                            position: marker.activationPoint.cgPoint,
                             color: palette.strokeColor(at: index)
                         )
                     }
@@ -129,7 +129,7 @@ public struct AccessibilitySnapshotView<Content: View>: View {
             window.isHidden = true
             window.rootViewController = nil
         }
-        
+
         do {
             snapshotImage = try hostingController.view.renderToImage(
                 configuration: configuration.rendering
@@ -294,7 +294,7 @@ public struct PreParsedAccessibilitySnapshotView: View {
 
                     if shouldShowActivationPoint(for: marker) {
                         ActivationPointView(
-                            position: marker.activationPoint,
+                            position: marker.activationPoint.cgPoint,
                             color: palette.strokeColor(at: index)
                         )
                     }

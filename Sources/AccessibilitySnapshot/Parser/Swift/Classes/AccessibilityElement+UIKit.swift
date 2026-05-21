@@ -6,6 +6,14 @@ import UIKit
 extension AccessibilityElement.CustomRotor {
     init?(from rotor: UIAccessibilityCustomRotor, parentElement: NSObject, root: UIView, context: AccessibilityHierarchyParser.Context? = nil, resultLimit: Int) {
         guard rotor.isKnownRotorType else { return nil }
+        guard resultLimit > 0 else {
+            self.init(
+                name: rotor.displayName(locale: parentElement.accessibilityLanguage),
+                resultMarkers: [],
+                limit: .none
+            )
+            return
+        }
         let collected = rotor.collectAllResults(nextLimit: resultLimit, previousLimit: resultLimit)
         let markers: [ResultMarker] = collected.results.compactMap { result in
             guard let element = result.targetElement as? NSObject else { return nil }

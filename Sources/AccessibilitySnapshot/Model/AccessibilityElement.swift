@@ -5,8 +5,8 @@ public struct AccessibilityElement: Hashable, Codable, Sendable {
 
     // MARK: - Public Types
 
-    public struct CustomRotor: Hashable, Codable, Sendable {
-        public struct ResultMarker: Hashable, Codable, Sendable {
+    public struct CustomRotor: Hashable, CustomStringConvertible, Codable, Sendable {
+        public struct ResultMarker: Hashable, CustomStringConvertible, Codable, Sendable {
             public let elementDescription: String
             public let rangeDescription: String?
             public let shape: AccessibilityShape?
@@ -15,6 +15,13 @@ public struct AccessibilityElement: Hashable, Codable, Sendable {
                 self.elementDescription = elementDescription
                 self.rangeDescription = rangeDescription
                 self.shape = shape
+            }
+
+            public var description: String {
+                guard let rangeDescription else {
+                    return elementDescription
+                }
+                return "\(elementDescription) \(rangeDescription)"
             }
         }
 
@@ -26,6 +33,10 @@ public struct AccessibilityElement: Hashable, Codable, Sendable {
             self.name = name
             self.resultMarkers = resultMarkers
             self.limit = limit
+        }
+
+        public var description: String {
+            name + ": " + resultMarkers.map(\.description).joined(separator: "\n")
         }
     }
 
