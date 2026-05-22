@@ -18,9 +18,12 @@ public struct AccessibilityContainer: Hashable, Codable, Sendable {
     /// so consumers can apply the same scope across multiple windows.
     public let isModalBoundary: Bool
 
-    public init(type: ContainerType, frame: AccessibilityRect, isModalBoundary: Bool = false) {
+    public let customActions: [AccessibilityElement.CustomAction]
+
+    public init(type: ContainerType, frame: AccessibilityRect, isModalBoundary: Bool = false, customActions: [AccessibilityElement.CustomAction] = []) {
         self.type = type
         self.frame = frame
         self.isModalBoundary = isModalBoundary
+        self.customActions = customActions
     }
 }

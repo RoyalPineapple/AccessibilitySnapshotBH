@@ -254,7 +254,7 @@ public final class AccessibilityHierarchyParser {
                 activationPoint: activationPoint,
                 screenScale: (root.window?.screen ?? UIScreen.main).scale
             ),
-            customActions: object.accessibilityCustomActions?.map(\.name) ?? [],
+            customActions: object.accessibilityCustomActions?.map { AccessibilityElement.CustomAction(name: $0.name) } ?? [],
             customContent: object.customContent,
             customRotors: object.customRotors(in: root, context: context, resultLimit: rotorResultLimit),
             accessibilityLanguage: object.accessibilityLanguage,
@@ -546,8 +546,6 @@ public final class AccessibilityHierarchyParser {
         return nil
     }
 
-
-
     // MARK: - Private Hierarchy Methods
 
     private func mapNodesToHierarchy(
@@ -602,7 +600,8 @@ public final class AccessibilityHierarchyParser {
                     let container = AccessibilityContainer(
                         type: containerType,
                         frame: frame,
-                        isModalBoundary: info.isModalBoundary
+                        isModalBoundary: info.isModalBoundary,
+                        customActions: info.customActions
                     )
                     containerVisitor?(container, info.view)
                     return [.container(container, children: mappedChildren)]
@@ -774,6 +773,7 @@ private struct ContainerInfo {
     let rowCount: Int?
     let columnCount: Int?
     let isModalBoundary: Bool
+    let customActions: [AccessibilityElement.CustomAction]
 }
 
 private enum AccessibilityNode {
@@ -968,6 +968,7 @@ private extension NSObject {
         let scrollableContentSize = scrollableContentSize(for: view)
         let isSemanticGroup = containerType == .semanticGroup
             && (label != nil || value != nil || identifier != nil)
+        let customActions = view.accessibilityCustomActions?.map { AccessibilityElement.CustomAction(name: $0.name) } ?? []
         let shouldEmitContainer = traits.contains(.tabBar)
             || containerType == .list
             || containerType == .landmark
@@ -975,6 +976,7 @@ private extension NSObject {
             || isSemanticGroup
             || scrollableContentSize != nil
             || isModalBoundary
+            || !customActions.isEmpty
 
         guard shouldEmitContainer else {
             return nil
@@ -990,7 +992,8 @@ private extension NSObject {
             scrollableContentSize: scrollableContentSize,
             rowCount: rowCount,
             columnCount: columnCount,
-            isModalBoundary: isModalBoundary
+            isModalBoundary: isModalBoundary,
+            customActions: customActions
         )
     }
 

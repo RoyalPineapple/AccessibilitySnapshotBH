@@ -580,7 +580,7 @@ final class AccessibilityHierarchyParserTests: XCTestCase {
             shape: .frame(CGRect(x: 10, y: 20, width: 100, height: 44)),
             activationPoint: CGPoint(x: 60, y: 42),
             usesDefaultActivationPoint: true,
-            customActions: ["Delete"],
+            customActions: [.init(name: "Delete")],
             customContent: [],
             customRotors: [],
             accessibilityLanguage: "en-US",
@@ -798,18 +798,29 @@ final class AccessibilityHierarchyParserTests: XCTestCase {
     }
 
     func testCustomActionCodable() throws {
-        let action: AccessibilityElement.CustomAction = "Delete"
+        let action = AccessibilityElement.CustomAction(name: "Delete")
 
         let encoder = JSONEncoder()
         let data = try encoder.encode(action)
 
         let json = String(data: data, encoding: .utf8)
-        XCTAssertEqual(json, "\"Delete\"")
+        XCTAssertEqual(json, "{\"name\":\"Delete\"}")
 
         let decoder = JSONDecoder()
         let decoded = try decoder.decode(AccessibilityElement.CustomAction.self, from: data)
 
         XCTAssertEqual(decoded, action)
+    }
+
+    func testAccessibilityContainerWithCustomActionsCodable() throws {
+        let container = AccessibilityContainer(
+            type: .semanticGroup(label: nil, value: nil, identifier: nil),
+            frame: CGRect(x: 0, y: 0, width: 320, height: 200),
+            customActions: [.init(name: "Delete"), .init(name: "Share")]
+        )
+        let data = try JSONEncoder().encode(container)
+        let decoded = try JSONDecoder().decode(AccessibilityContainer.self, from: data)
+        XCTAssertEqual(decoded.customActions, container.customActions)
     }
 
     // MARK: - Data Table Tests
