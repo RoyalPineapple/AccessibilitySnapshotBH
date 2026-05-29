@@ -131,15 +131,13 @@ public final class AccessibilityHierarchyParser {
         in root: UIView,
         rotorResultLimit: Int = AccessibilityElement.defaultRotorResultLimit,
         userInterfaceLayoutDirectionProvider: UserInterfaceLayoutDirectionProviding = UIApplication.shared,
-        userInterfaceIdiomProvider: UserInterfaceIdiomProviding = UIDevice.current,
-        elementVisitor: ((AccessibilityElement, Int, NSObject) -> Void)? = nil
+        userInterfaceIdiomProvider: UserInterfaceIdiomProviding = UIDevice.current
     ) -> [AccessibilityElement] {
         return parseAccessibilityHierarchy(
             in: root,
             rotorResultLimit: rotorResultLimit,
             userInterfaceLayoutDirectionProvider: userInterfaceLayoutDirectionProvider,
-            userInterfaceIdiomProvider: userInterfaceIdiomProvider,
-            elementVisitor: elementVisitor
+            userInterfaceIdiomProvider: userInterfaceIdiomProvider
         ).flattenToElements()
     }
 
@@ -170,10 +168,43 @@ public final class AccessibilityHierarchyParser {
         in root: UIView,
         rotorResultLimit: Int = AccessibilityElement.defaultRotorResultLimit,
         userInterfaceLayoutDirectionProvider: UserInterfaceLayoutDirectionProviding = UIApplication.shared,
-        userInterfaceIdiomProvider: UserInterfaceIdiomProviding = UIDevice.current,
-        elementVisitor: ((AccessibilityElement, Int, NSObject) -> Void)? = nil,
-        containerVisitor: ((AccessibilityContainer, NSObject) -> Void)? = nil
+        userInterfaceIdiomProvider: UserInterfaceIdiomProviding = UIDevice.current
     ) -> [AccessibilityHierarchy] {
+        parseAccessibilityHierarchy(
+            in: root,
+            rotorResultLimit: rotorResultLimit,
+            userInterfaceLayoutDirectionProvider: userInterfaceLayoutDirectionProvider,
+            userInterfaceIdiomProvider: userInterfaceIdiomProvider,
+            makeElement: { element, traversalIndex, _ in .element(element, traversalIndex: traversalIndex) },
+            makeContainer: { container, children, _ in .container(container, children: children) }
+        )
+    }
+
+    /// Parses the accessibility hierarchy and folds it into a caller-defined node type.
+    ///
+    /// Walks the accessibility tree once in VoiceOver traversal order and builds a tree of `Node`
+    /// values bottom-up. `makeElement` constructs a leaf from its parsed `AccessibilityElement`, its
+    /// `traversalIndex`, and the live accessibility object that produced it. `makeContainer`
+    /// constructs an interior node from its `AccessibilityContainer`, its already-built child nodes
+    /// in traversal order, and the source object backing the container.
+    ///
+    /// The `source` parameters expose the originating accessibility object so callers can correlate
+    /// parsed markers back to their source views — useful for test harnesses, debugging overlays,
+    /// and custom renderers. `parseAccessibilityHierarchy(in:)` is the default instantiation,
+    /// producing `[AccessibilityHierarchy]` and ignoring the source.
+    ///
+    /// Both closures are invoked synchronously during the walk, on the caller's thread.
+    ///
+    /// - parameter makeElement: Builds a leaf node. Called once per element, in traversal order.
+    /// - parameter makeContainer: Builds an interior node from its children. Called once per container.
+    public func parseAccessibilityHierarchy<Node>(
+        in root: UIView,
+        rotorResultLimit: Int = AccessibilityElement.defaultRotorResultLimit,
+        userInterfaceLayoutDirectionProvider: UserInterfaceLayoutDirectionProviding = UIApplication.shared,
+        userInterfaceIdiomProvider: UserInterfaceIdiomProviding = UIDevice.current,
+        makeElement: (AccessibilityElement, _ traversalIndex: Int, _ source: NSObject) -> Node,
+        makeContainer: (AccessibilityContainer, _ children: [Node], _ source: NSObject) -> Node
+    ) -> [Node] {
         let userInterfaceLayoutDirection = userInterfaceLayoutDirectionProvider.userInterfaceLayoutDirection
         let userInterfaceIdiom = userInterfaceIdiomProvider.userInterfaceIdiom
 
@@ -201,13 +232,18 @@ public final class AccessibilityHierarchyParser {
             )
         }
 
-        let elements: [AccessibilityElement] = contextualizedElements.enumerated().map { index, element in
-            let built = buildElement(from: element.object, context: element.context, in: root, rotorResultLimit: rotorResultLimit)
-            elementVisitor?(built, index, element.object)
-            return built
+        let elements: [AccessibilityElement] = contextualizedElements.map { element in
+            buildElement(from: element.object, context: element.context, in: root, rotorResultLimit: rotorResultLimit)
         }
 
-        return mapNodesToHierarchy(accessibilityNodes, sortedElements: uncontextualizedElements, elements: elements, in: root, containerVisitor: containerVisitor)
+        return foldNodes(
+            accessibilityNodes,
+            sortedElements: uncontextualizedElements,
+            elements: elements,
+            in: root,
+            makeElement: makeElement,
+            makeContainer: makeContainer
+        )
     }
 
     // MARK: - Private Types
@@ -548,24 +584,31 @@ public final class AccessibilityHierarchyParser {
 
     // MARK: - Private Hierarchy Methods
 
-    private func mapNodesToHierarchy(
+    /// Folds the structural accessibility tree into a caller-defined `Node` type, bottom-up.
+    ///
+    /// Each produced node is paired internally with a traversal-derived sort key so that a
+    /// container can order its children without inspecting the opaque `Node`. This mirrors
+    /// `AccessibilityHierarchy.sortIndex`: an element sorts by its `traversalIndex`, a container by
+    /// the minimum sort key among its children.
+    private func foldNodes<Node>(
         _ nodes: [AccessibilityNode],
         sortedElements: [(object: NSObject, contextProvider: ContextProvider?)],
         elements: [AccessibilityElement],
         in root: UIView,
-        containerVisitor: ((AccessibilityContainer, NSObject) -> Void)? = nil
-    ) -> [AccessibilityHierarchy] {
+        makeElement: (AccessibilityElement, _ traversalIndex: Int, _ source: NSObject) -> Node,
+        makeContainer: (AccessibilityContainer, _ children: [Node], _ source: NSObject) -> Node
+    ) -> [Node] {
         var indexLookup: [ObjectIdentifier: Int] = [:]
         for (index, element) in sortedElements.enumerated() {
             indexLookup[ObjectIdentifier(element.object)] = index
         }
 
-        func mapNode(_ node: AccessibilityNode) -> [AccessibilityHierarchy] {
+        func mapNode(_ node: AccessibilityNode) -> [(node: Node, sortIndex: Int)] {
             switch node {
             case let .element(object, _):
                 guard let index = indexLookup[ObjectIdentifier(object)],
                       index < elements.count else { return [] }
-                return [.element(elements[index], traversalIndex: index)]
+                return [(makeElement(elements[index], index, object), index)]
 
             case let .group(children, _, _, containerInfo):
                 let mappedChildren = children.flatMap { mapNode($0) }.sorted { lhs, rhs in
@@ -603,15 +646,15 @@ public final class AccessibilityHierarchyParser {
                         isModalBoundary: info.isModalBoundary,
                         customActions: info.customActions
                     )
-                    containerVisitor?(container, info.view)
-                    return [.container(container, children: mappedChildren)]
+                    let sortIndex = mappedChildren.map(\.sortIndex).min() ?? Int.max
+                    return [(makeContainer(container, mappedChildren.map(\.node), info.view), sortIndex)]
                 }
 
                 return mappedChildren
             }
         }
 
-        return nodes.flatMap { mapNode($0) }
+        return nodes.flatMap { mapNode($0) }.map(\.node)
     }
 }
 
