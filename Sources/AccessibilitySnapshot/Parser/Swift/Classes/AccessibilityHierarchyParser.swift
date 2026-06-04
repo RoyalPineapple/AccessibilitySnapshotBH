@@ -887,23 +887,17 @@ private extension NSObject {
     /// Returns the explicit accessibility elements exposed by this object. When
     /// `accessibilityElements` is set (including to an empty array) it is used directly — this covers
     /// UIKit containers such as `UISegmentedControl`, which populate `accessibilityElements` with
-    /// their internal elements. When it is `nil` and the receiver is not a `UIView`, this falls back
-    /// to the `accessibilityElementCount()` / `accessibilityElement(at:)` container APIs, mirroring
-    /// how `UIAccessibilityContainer` consumers (including VoiceOver) resolve elements. This fallback
-    /// is the case the method exists for: non-`UIView` `NSObject`s have no subviews to traverse, so
-    /// without it their index-vended elements would be invisible to the parser. `UIView`s are
-    /// deliberately excluded from the fallback so their existing subview-traversal path (with its
-    /// grouping, sorting, and pruning) is preserved; in practice no standard UIKit view needs it
-    /// regardless, since they either populate `accessibilityElements` or report `NSNotFound` from
-    /// `accessibilityElementCount()`. Returns `nil` when the object does not act as an explicit
-    /// accessibility container.
+    /// their internal elements. When it is `nil`, this falls back to the `accessibilityElementCount()`
+    /// / `accessibilityElement(at:)` container APIs, mirroring how `UIAccessibilityContainer`
+    /// consumers (including VoiceOver) resolve elements — so an object whose children are exposed only
+    /// through those APIs is captured rather than treated as a leaf. The `NSNotFound` sentinel and a
+    /// non-positive count are filtered below, which is what keeps `UIView`s (and other objects that
+    /// don't implement the dynamic container methods) on the caller's existing traversal path: they
+    /// report `NSNotFound` from `accessibilityElementCount()`. Returns `nil` when the object does not
+    /// act as an explicit accessibility container.
     private func resolvedAccessibilityElements() -> [NSObject]? {
         if let elements = accessibilityElements as? [NSObject] {
             return elements
-        }
-
-        guard !(self is UIView) else {
-            return nil
         }
 
         // `accessibilityElementCount()` defaults to `NSNotFound` for objects that don't implement the

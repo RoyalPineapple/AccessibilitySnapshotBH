@@ -1048,18 +1048,19 @@ final class AccessibilityHierarchyParserTests: XCTestCase {
         XCTAssertTrue(elements.isEmpty, "Expected the NSNotFound count to be treated as no elements, got: \(elements)")
     }
 
-    /// A `UIView` with nil `accessibilityElements` that vends elements only through the index APIs
-    /// must still use the subview-iteration branch. This is the single shape that actually reaches
-    /// the `!(self is UIView)` scoping guard: standard UIKit views either populate
-    /// `accessibilityElements` (e.g. `UISegmentedControl`, handled by the first check) or report
-    /// `NSNotFound` (handled by the sentinel guard), so the guard is otherwise defensive. The
-    /// branches are mutually exclusive — without the guard, the index APIs would route this view
-    /// into the explicit-elements branch and the subview-iteration branch would be skipped entirely,
-    /// surfacing the phantom element in place of the real subview. This test pins that contract so
-    /// the guard isn't dropped as "redundant" in a future refactor.
-    func testViewContainerIgnoresIndexAPIsInFavorOfSubviews() {
+    /// A `UIView` that exposes its children only through the index-based container APIs (nil
+    /// `accessibilityElements`) is resolved through that fallback, just like a non-`UIView` container
+    /// and just like VoiceOver consumes a `UIAccessibilityContainer`. Because the view vends elements
+    /// through the index APIs, those take precedence over subview traversal (the parser enters the
+    /// explicit-elements branch and skips the subview branch) — matching VoiceOver, which ignores the
+    /// subview tree once a view implements the container APIs. Standard UIKit views are unaffected:
+    /// they either populate `accessibilityElements` or report `NSNotFound` (see the PR description for
+    /// the full investigation).
+    func testViewContainerResolvesElementsViaIndexAPIs() {
         let rootView = IndexAPIView(frame: .init(x: 0, y: 0, width: 200, height: 100))
 
+        // A subview that the subview-iteration branch would otherwise surface. Since the view vends
+        // elements through the index APIs, the index-vended phantom takes precedence instead.
         let realSubview = UIView(frame: .init(x: 0, y: 0, width: 200, height: 40))
         realSubview.isAccessibilityElement = true
         realSubview.accessibilityLabel = "Real Subview"
@@ -1073,15 +1074,13 @@ final class AccessibilityHierarchyParserTests: XCTestCase {
             userInterfaceIdiomProvider: TestUserInterfaceIdiomProvider(userInterfaceIdiom: .phone)
         ).flattenToElements().map { $0.description }
 
-        XCTAssertEqual(elements, ["Real Subview"])
-        XCTAssertFalse(elements.contains("Phantom Element"), "View containers must not resolve elements via the index APIs.")
+        XCTAssertEqual(elements, ["Phantom Element"])
     }
 
     /// End-to-end regression guard for a real `UISegmentedControl`. It vends its segments through
     /// `accessibilityElements` (resolved by the first branch of `resolvedAccessibilityElements()`),
     /// so it must continue to parse as a three-element series with VoiceOver-style "N of 3" context —
-    /// the `accessibilityElements` path must not be disturbed by the index-API fallback or its
-    /// `UIView` scoping.
+    /// the `accessibilityElements` path must not be disturbed by the index-API fallback.
     func testSegmentedControlParsesAsSeries() {
         let window = UIWindow(frame: .init(x: 0, y: 0, width: 320, height: 200))
         let segmented = UISegmentedControl(items: ["One", "Two", "Three"])
@@ -1171,12 +1170,9 @@ private final class IndexAPIContainer: NSObject {
 }
 
 /// A `UIView` subclass with nil `accessibilityElements` that vends a uniquely-labelled "phantom"
-/// element through the index-based container APIs. This is the only view shape that reaches the
-/// `!(self is UIView)` guard: UIKit controls that vend internal elements (e.g. `UISegmentedControl`)
-/// do so via `accessibilityElements`, which is handled before the guard, and plain views report
-/// `NSNotFound`, which the sentinel guard handles. The distinct phantom label makes the regression
-/// observable: if the parser ever resolved views through the index APIs, "Phantom Element" would
-/// surface in place of the real subview.
+/// element through the index-based container APIs — the view-shaped equivalent of `IndexAPIContainer`.
+/// The distinct phantom label makes the fallback observable: when the parser resolves a view through
+/// the index APIs, "Phantom Element" surfaces in place of any subview.
 private final class IndexAPIView: UIView {
     private lazy var phantomElement: UIAccessibilityElement = {
         let element = UIAccessibilityElement(accessibilityContainer: self)
