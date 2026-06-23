@@ -9,7 +9,7 @@ struct TraitsView: View {
     private typealias Tokens = DesignTokens.TraitPill
 
     private var displayableTraits: [UnspokenTrait] {
-        UnspokenTrait.from(traits)
+        UnspokenTrait.from(traits.uiAccessibilityTraits)
     }
 
     var body: some View {

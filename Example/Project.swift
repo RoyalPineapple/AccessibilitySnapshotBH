@@ -60,7 +60,7 @@ let project = Project(
             product: .framework,
             bundleId: "com.cashapp.AccessibilitySnapshotModel",
             deploymentTargets: deploymentTargets,
-            sources: ["../AccessibilitySnapshotModel/Sources/AccessibilitySnapshotModel/**/*.swift"]
+            sources: ["../Sources/AccessibilitySnapshot/Model/**/*.swift"]
         ),
 
         .target(
@@ -88,7 +88,12 @@ let project = Project(
             product: .framework,
             bundleId: "com.cashapp.AccessibilitySnapshotParser",
             deploymentTargets: deploymentTargets,
-            sources: ["../Sources/AccessibilitySnapshot/Parser/Swift/Classes/**/*.swift"],
+            sources: [
+                .glob(
+                    "../Sources/AccessibilitySnapshot/Parser/Swift/Classes/**/*.swift",
+                    excluding: ["../Sources/AccessibilitySnapshot/Parser/Swift/Classes/BundleModule+Xcode.swift"]
+                ),
+            ],
             resources: [
                 "../Sources/AccessibilitySnapshot/Parser/Swift/Assets/**/*",
             ],
@@ -315,7 +320,6 @@ let project = Project(
                 project: ["UnitTests/Supporting Files/*.h"]
             ),
             dependencies: [
-                .target(name: "AccessibilitySnapshotDemo"),
                 .target(name: "AccessibilitySnapshotCore"),
                 .target(name: "AccessibilitySnapshotParser"),
                 .target(name: "AccessibilitySnapshotParser_ObjC"),
@@ -334,6 +338,16 @@ let project = Project(
         ("German", "de"),
         ("Russian", "ru"),
     ].map { makeLanguageScheme(language: $0.0, languageCode: $0.1) } + [
+        .scheme(
+            name: "UnitTests",
+            shared: true,
+            buildAction: .buildAction(targets: [
+                .target("UnitTests"),
+            ]),
+            testAction: .targets([
+                .testableTarget(target: .target("UnitTests")),
+            ])
+        ),
         .scheme(
             name: "AccessibilitySnapshotPreviewsDemo",
             shared: true,

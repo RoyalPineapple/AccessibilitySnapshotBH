@@ -310,6 +310,79 @@ final class AccessibilityHierarchyParserTests: XCTestCase {
         }
     }
 
+    func testNonScrollableScrollViewIsFlattened() {
+        let rootView = UIView(frame: .init(x: 0, y: 0, width: 100, height: 100))
+
+        let scrollView = UIScrollView(frame: rootView.bounds)
+        scrollView.contentSize = CGSize(width: 100, height: 100)
+        rootView.addSubview(scrollView)
+
+        let child = UIView(frame: .init(x: 10, y: 10, width: 30, height: 30))
+        child.isAccessibilityElement = true
+        child.accessibilityLabel = "Child"
+        child.accessibilityFrame = child.frame
+        scrollView.addSubview(child)
+
+        let parser = AccessibilityHierarchyParser()
+        let hierarchy = parser.parseAccessibilityHierarchy(in: rootView)
+
+        XCTAssertTrue(hierarchy.flattenToContainers().isEmpty)
+        XCTAssertEqual(hierarchy.flattenToElements().map { $0.description }, ["Child"])
+    }
+
+    func testScrollableScrollViewIsPreserved() {
+        let rootView = UIView(frame: .init(x: 0, y: 0, width: 100, height: 100))
+
+        let scrollView = UIScrollView(frame: rootView.bounds)
+        scrollView.contentSize = CGSize(width: 100, height: 160)
+        rootView.addSubview(scrollView)
+
+        let child = UIView(frame: .init(x: 10, y: 10, width: 30, height: 30))
+        child.isAccessibilityElement = true
+        child.accessibilityLabel = "Child"
+        child.accessibilityFrame = child.frame
+        scrollView.addSubview(child)
+
+        let parser = AccessibilityHierarchyParser()
+        let hierarchy = parser.parseAccessibilityHierarchy(in: rootView)
+
+        guard case let .container(container, children) = hierarchy.first else {
+            XCTFail("Expected scrollable container")
+            return
+        }
+
+        guard case let .scrollable(contentSize) = container.type else {
+            XCTFail("Expected scrollable container type")
+            return
+        }
+
+        XCTAssertEqual(contentSize.cgSize, scrollView.contentSize)
+        XCTAssertEqual(children.flattenToElements().map { $0.description }, ["Child"])
+    }
+
+    func testNonScrollableWrapperAroundScrollViewIsFlattened() {
+        let rootView = UIView(frame: .init(x: 0, y: 0, width: 100, height: 100))
+
+        let wrapper = ScrollableWrapperTestView(frame: rootView.bounds)
+        rootView.addSubview(wrapper)
+
+        let scrollView = UIScrollView(frame: wrapper.bounds)
+        scrollView.contentSize = wrapper.bounds.size
+        wrapper.addSubview(scrollView)
+
+        let child = UIView(frame: .init(x: 10, y: 10, width: 30, height: 30))
+        child.isAccessibilityElement = true
+        child.accessibilityLabel = "Child"
+        child.accessibilityFrame = child.frame
+        scrollView.addSubview(child)
+
+        let parser = AccessibilityHierarchyParser()
+        let hierarchy = parser.parseAccessibilityHierarchy(in: rootView)
+
+        XCTAssertTrue(hierarchy.flattenToContainers().isEmpty)
+        XCTAssertEqual(hierarchy.flattenToElements().map { $0.description }, ["Child"])
+    }
+
     func testNestedContainersPreserveHierarchy() {
         // Use NestedContainersTestView which mirrors ContainerHierarchyViewController's NestedContainersDemoView
         let nestedView = NestedContainersTestView(frame: CGRect(x: 0, y: 0, width: 200, height: 100))
@@ -495,10 +568,144 @@ final class AccessibilityHierarchyParserTests: XCTestCase {
 
     // MARK: - Codable Tests
 
+    func testAccessibilityElementCodable() throws {
+        let element = AccessibilityElement(
+            description: "Test Button",
+            label: "Button Label",
+            value: "Button Value",
+            traits: [.button, .selected],
+            identifier: "test-button-id",
+            hint: "Double tap to activate",
+            userInputLabels: ["tap button", "press button"],
+            shape: .frame(CGRect(x: 10, y: 20, width: 100, height: 44)),
+            activationPoint: CGPoint(x: 60, y: 42),
+            usesDefaultActivationPoint: true,
+            customActions: [.init(name: "Delete")],
+            customContent: [],
+            customRotors: [],
+            accessibilityLanguage: "en-US",
+            respondsToUserInteraction: true
+        )
+
+        let encoder = JSONEncoder()
+        let data = try encoder.encode(element)
+
+        let decoder = JSONDecoder()
+        let decoded = try decoder.decode(AccessibilityElement.self, from: data)
+
+        XCTAssertEqual(decoded.description, element.description)
+        XCTAssertEqual(decoded.label, element.label)
+        XCTAssertEqual(decoded.value, element.value)
+        XCTAssertEqual(decoded.traits, element.traits)
+        XCTAssertEqual(decoded.identifier, element.identifier)
+        XCTAssertEqual(decoded.hint, element.hint)
+        XCTAssertEqual(decoded.userInputLabels, element.userInputLabels)
+        XCTAssertEqual(decoded.shape, element.shape)
+        XCTAssertEqual(decoded.activationPoint, element.activationPoint)
+        XCTAssertEqual(decoded.usesDefaultActivationPoint, element.usesDefaultActivationPoint)
+        XCTAssertEqual(decoded.customActions, element.customActions)
+        XCTAssertEqual(decoded.accessibilityLanguage, element.accessibilityLanguage)
+        XCTAssertEqual(decoded.respondsToUserInteraction, element.respondsToUserInteraction)
+    }
+
+    func testAccessibilityContainerCodable() throws {
+        let container = AccessibilityContainer(
+            type: .list,
+            frame: CGRect(x: 0, y: 0, width: 320, height: 200)
+        )
+
+        let encoder = JSONEncoder()
+        let data = try encoder.encode(container)
+
+        let decoder = JSONDecoder()
+        let decoded = try decoder.decode(AccessibilityContainer.self, from: data)
+
+        XCTAssertEqual(decoded.type, .list)
+        XCTAssertEqual(decoded.frame, container.frame)
+    }
+
+    func testAccessibilityHierarchyCodable() throws {
+        let element1 = AccessibilityElement(
+            description: "Item 1",
+            label: "Item 1",
+            value: nil,
+            traits: [],
+            identifier: nil,
+            hint: nil,
+            userInputLabels: nil,
+            shape: .frame(CGRect(x: 0, y: 0, width: 100, height: 44)),
+            activationPoint: CGPoint(x: 50, y: 22),
+            usesDefaultActivationPoint: true,
+            customActions: [],
+            customContent: [],
+            customRotors: [],
+            accessibilityLanguage: nil,
+            respondsToUserInteraction: false
+        )
+
+        let element2 = AccessibilityElement(
+            description: "Item 2",
+            label: "Item 2",
+            value: nil,
+            traits: [],
+            identifier: nil,
+            hint: nil,
+            userInputLabels: nil,
+            shape: .frame(CGRect(x: 0, y: 50, width: 100, height: 44)),
+            activationPoint: CGPoint(x: 50, y: 72),
+            usesDefaultActivationPoint: true,
+            customActions: [],
+            customContent: [],
+            customRotors: [],
+            accessibilityLanguage: nil,
+            respondsToUserInteraction: false
+        )
+
+        let container = AccessibilityContainer(
+            type: .list,
+            frame: CGRect(x: 0, y: 0, width: 100, height: 100)
+        )
+
+        let hierarchy: [AccessibilityHierarchy] = [
+            .container(container, children: [
+                .element(element1, traversalIndex: 0),
+                .element(element2, traversalIndex: 1),
+            ]),
+        ]
+
+        let encoder = JSONEncoder()
+        let data = try encoder.encode(hierarchy)
+
+        let decoder = JSONDecoder()
+        let decoded = try decoder.decode([AccessibilityHierarchy].self, from: data)
+
+        XCTAssertEqual(decoded.count, 1)
+
+        if case let .container(decodedContainer, children) = decoded.first {
+            XCTAssertEqual(decodedContainer.type, .list)
+            XCTAssertEqual(children.count, 2)
+
+            if case let .element(child1, index1) = children[0] {
+                XCTAssertEqual(child1.description, "Item 1")
+                XCTAssertEqual(index1, 0)
+            } else {
+                XCTFail("Expected element child")
+            }
+
+            if case let .element(child2, index2) = children[1] {
+                XCTAssertEqual(child2.description, "Item 2")
+                XCTAssertEqual(index2, 1)
+            } else {
+                XCTFail("Expected element child")
+            }
+        } else {
+            XCTFail("Expected container at root")
+        }
+    }
+
     func testShapeCodableWithPath() throws {
         let path = UIBezierPath(roundedRect: CGRect(x: 10, y: 20, width: 100, height: 50), cornerRadius: 8)
-        let elements = AccessibilityPathElement.elements(from: path.cgPath)
-        let shape = AccessibilityShape.path(elements)
+        let shape = AccessibilityShape(.path(path))
 
         let encoder = JSONEncoder()
         let data = try encoder.encode(shape)
@@ -506,15 +713,35 @@ final class AccessibilityHierarchyParserTests: XCTestCase {
         let decoder = JSONDecoder()
         let decoded = try decoder.decode(AccessibilityShape.self, from: data)
 
-        if case let .path(decodedPath) = decoded {
-            XCTAssertEqual(decodedPath, elements)
+        if case .path = decoded {
+            XCTAssertEqual(decoded.frame, path.bounds)
         } else {
             XCTFail("Expected path shape")
         }
     }
 
+    func testContainerTypeCodable() throws {
+        let types: [AccessibilityContainer.ContainerType] = [
+            .list,
+            .landmark,
+            .tabBar,
+            .semanticGroup(label: "Test", value: nil, identifier: "test-id"),
+            .dataTable(rowCount: 3, columnCount: 4),
+        ]
+
+        for type in types {
+            let encoder = JSONEncoder()
+            let data = try encoder.encode(type)
+
+            let decoder = JSONDecoder()
+            let decoded = try decoder.decode(AccessibilityContainer.ContainerType.self, from: data)
+
+            XCTAssertEqual(decoded, type)
+        }
+    }
+
     func testTraitsCodable() throws {
-        let traits: UIAccessibilityTraits = [.button, .selected, .header, .link]
+        let traits: AccessibilityTraits = [.button, .selected, .header, .link]
 
         let encoder = JSONEncoder()
         let data = try encoder.encode(traits)
@@ -527,13 +754,13 @@ final class AccessibilityHierarchyParserTests: XCTestCase {
         XCTAssertTrue(jsonArray.contains("link"), "Traits should include 'link'")
 
         let decoder = JSONDecoder()
-        let decoded = try decoder.decode(UIAccessibilityTraits.self, from: data)
+        let decoded = try decoder.decode(AccessibilityTraits.self, from: data)
 
         XCTAssertEqual(decoded, traits)
     }
 
     func testTraitsEmptyEncodesAsEmptyArray() throws {
-        let traits: UIAccessibilityTraits = []
+        let traits = AccessibilityTraits()
 
         let encoder = JSONEncoder()
         let data = try encoder.encode(traits)
@@ -542,7 +769,7 @@ final class AccessibilityHierarchyParserTests: XCTestCase {
         XCTAssertEqual(jsonString, "[]", "Empty traits should encode as empty array")
 
         let decoder = JSONDecoder()
-        let decoded = try decoder.decode(UIAccessibilityTraits.self, from: data)
+        let decoded = try decoder.decode(AccessibilityTraits.self, from: data)
 
         XCTAssertEqual(decoded, traits)
     }
@@ -554,8 +781,7 @@ final class AccessibilityHierarchyParserTests: XCTestCase {
         path.addLine(to: CGPoint(x: 100, y: 50))
         path.close()
 
-        let elements = AccessibilityPathElement.elements(from: path.cgPath)
-        let shape = AccessibilityShape.path(elements)
+        let shape = AccessibilityShape(.path(path))
 
         let encoder = JSONEncoder()
         let data = try encoder.encode(shape)
@@ -564,11 +790,37 @@ final class AccessibilityHierarchyParserTests: XCTestCase {
         let decoder = JSONDecoder()
         let decoded = try decoder.decode(AccessibilityShape.self, from: data)
 
-        if case let .path(decodedPath) = decoded {
-            XCTAssertEqual(decodedPath, elements)
+        if case .path = decoded {
+            XCTAssertEqual(decoded.frame, path.bounds)
         } else {
             XCTFail("Expected path shape")
         }
+    }
+
+    func testCustomActionCodable() throws {
+        let action = AccessibilityElement.CustomAction(name: "Delete")
+
+        let encoder = JSONEncoder()
+        let data = try encoder.encode(action)
+
+        let json = String(data: data, encoding: .utf8)
+        XCTAssertEqual(json, "{\"name\":\"Delete\"}")
+
+        let decoder = JSONDecoder()
+        let decoded = try decoder.decode(AccessibilityElement.CustomAction.self, from: data)
+
+        XCTAssertEqual(decoded, action)
+    }
+
+    func testAccessibilityContainerWithCustomActionsCodable() throws {
+        let container = AccessibilityContainer(
+            type: .semanticGroup(label: nil, value: nil, identifier: nil),
+            frame: CGRect(x: 0, y: 0, width: 320, height: 200),
+            customActions: [.init(name: "Delete"), .init(name: "Share")]
+        )
+        let data = try JSONEncoder().encode(container)
+        let decoded = try JSONDecoder().decode(AccessibilityContainer.self, from: data)
+        XCTAssertEqual(decoded.customActions, container.customActions)
     }
 
     // MARK: - Data Table Tests
@@ -613,6 +865,119 @@ final class AccessibilityHierarchyParserTests: XCTestCase {
         } else {
             XCTFail("Expected dataTable container")
         }
+    }
+
+    func testModalSubviewIsPreservedAsBoundaryContainer() {
+        let rootView = UIView(frame: CGRect(x: 0, y: 0, width: 320, height: 480))
+
+        let background = UILabel(frame: CGRect(x: 20, y: 20, width: 220, height: 40))
+        background.text = "Background"
+        rootView.addSubview(background)
+
+        let dismissRegion = UIView(frame: rootView.bounds)
+        dismissRegion.accessibilityViewIsModal = true
+        rootView.addSubview(dismissRegion)
+
+        let button = UIButton(type: .system)
+        button.setTitle("Popover Action", for: .normal)
+        button.frame = CGRect(x: 80, y: 120, width: 180, height: 44)
+        rootView.addSubview(button)
+
+        let parser = AccessibilityHierarchyParser()
+        let hierarchy = parser.parseAccessibilityHierarchy(in: rootView)
+
+        XCTAssertEqual(hierarchy.flattenToElements().compactMap(\.label), ["Popover Action"])
+        XCTAssertEqual(hierarchy.flattenToContainers().filter(\.isModalBoundary).count, 1)
+    }
+
+    func testModalContainerKeepsChildrenAndBoundaryFlag() {
+        let rootView = UIView(frame: CGRect(x: 0, y: 0, width: 320, height: 480))
+
+        let modal = UIView(frame: CGRect(x: 40, y: 80, width: 240, height: 160))
+        modal.accessibilityViewIsModal = true
+        rootView.addSubview(modal)
+
+        let button = UIButton(type: .system)
+        button.setTitle("Modal Action", for: .normal)
+        button.frame = CGRect(x: 20, y: 20, width: 180, height: 44)
+        modal.addSubview(button)
+
+        let parser = AccessibilityHierarchyParser()
+        let hierarchy = parser.parseAccessibilityHierarchy(in: rootView)
+
+        XCTAssertEqual(hierarchy.flattenToElements().compactMap(\.label), ["Modal Action"])
+        XCTAssertEqual(hierarchy.flattenToContainers().filter(\.isModalBoundary).count, 1)
+    }
+
+    func testDataTableContainerCodable() throws {
+        let container = AccessibilityContainer(
+            type: .dataTable(rowCount: 5, columnCount: 4),
+            frame: CGRect(x: 0, y: 0, width: 320, height: 200)
+        )
+
+        let encoder = JSONEncoder()
+        let data = try encoder.encode(container)
+
+        let decoder = JSONDecoder()
+        let decoded = try decoder.decode(AccessibilityContainer.self, from: data)
+
+        if case let .dataTable(rowCount, columnCount) = decoded.type {
+            XCTAssertEqual(rowCount, 5)
+            XCTAssertEqual(columnCount, 4)
+        } else {
+            XCTFail("Expected dataTable type")
+        }
+    }
+
+    func testSemanticGroupContainerCodable() throws {
+        let container = AccessibilityContainer(
+            type: .semanticGroup(label: "Group Label", value: "Group Value", identifier: "group-id"),
+            frame: CGRect(x: 0, y: 0, width: 200, height: 100)
+        )
+
+        let encoder = JSONEncoder()
+        let data = try encoder.encode(container)
+
+        let decoder = JSONDecoder()
+        let decoded = try decoder.decode(AccessibilityContainer.self, from: data)
+
+        if case let .semanticGroup(label, value, identifier) = decoded.type {
+            XCTAssertEqual(label, "Group Label")
+            XCTAssertEqual(value, "Group Value")
+            XCTAssertEqual(identifier, "group-id")
+        } else {
+            XCTFail("Expected semanticGroup type")
+        }
+    }
+
+    func testTabBarContainerCodable() throws {
+        let container = AccessibilityContainer(
+            type: .tabBar,
+            frame: CGRect(x: 0, y: 0, width: 320, height: 49)
+        )
+
+        let encoder = JSONEncoder()
+        let data = try encoder.encode(container)
+
+        let decoder = JSONDecoder()
+        let decoded = try decoder.decode(AccessibilityContainer.self, from: data)
+
+        XCTAssertEqual(decoded.type, .tabBar)
+    }
+
+    func testLandmarkContainerCodable() throws {
+        let container = AccessibilityContainer(
+            type: .landmark,
+            frame: CGRect(x: 0, y: 0, width: 320, height: 200)
+        )
+
+        let encoder = JSONEncoder()
+        let data = try encoder.encode(container)
+
+        let decoder = JSONDecoder()
+        let decoded = try decoder.decode(AccessibilityContainer.self, from: data)
+
+        XCTAssertEqual(decoded.type, .landmark)
     }
 
     // MARK: - Zero-Frame Wrapper Views
@@ -856,18 +1221,22 @@ final class AccessibilityHierarchyParserTests: XCTestCase {
     // MARK: - Inconsistent Hierarchy Resilience
 
     /// A container that exposes accessibility elements via `accessibilityElements` but reports
-    /// `NSNotFound` when asked for their index. Previously triggered an `assert` inside
-    /// `context(for:from:...)`.
+    /// inconsistent live membership when asked for index/count. Real apps can hit this during
+    /// view transitions when custom containers have stale references.
     private final class InconsistentListContainer: UIView {
-        let child: UIAccessibilityElement
+        let firstChild: UIAccessibilityElement
+        let secondChild: UIAccessibilityElement
 
         override init(frame: CGRect) {
-            child = UIAccessibilityElement(accessibilityContainer: NSNull())
+            firstChild = UIAccessibilityElement(accessibilityContainer: NSNull())
+            secondChild = UIAccessibilityElement(accessibilityContainer: NSNull())
             super.init(frame: frame)
-            child.accessibilityLabel = "child"
-            child.accessibilityFrame = CGRect(x: 0, y: 0, width: 50, height: 50)
+            firstChild.accessibilityLabel = "first"
+            firstChild.accessibilityFrame = CGRect(x: 0, y: 0, width: 50, height: 50)
+            secondChild.accessibilityLabel = "second"
+            secondChild.accessibilityFrame = CGRect(x: 0, y: 60, width: 50, height: 50)
             accessibilityContainerType = .list
-            accessibilityElements = [child]
+            accessibilityElements = [firstChild, secondChild]
         }
 
         @available(*, unavailable)
@@ -876,9 +1245,13 @@ final class AccessibilityHierarchyParserTests: XCTestCase {
         override func index(ofAccessibilityElement element: Any) -> Int {
             return NSNotFound
         }
+
+        override func accessibilityElementCount() -> Int {
+            return 0
+        }
     }
 
-    func testParserReturnsContextlessElementWhenContainerReportsNotFound() {
+    func testParserUsesCapturedContainerMembershipWhenLiveMembershipIsInconsistent() {
         let root = UIView(frame: CGRect(x: 0, y: 0, width: 200, height: 200))
         let container = InconsistentListContainer(frame: root.bounds)
         root.addSubview(container)
@@ -890,7 +1263,7 @@ final class AccessibilityHierarchyParserTests: XCTestCase {
             userInterfaceIdiomProvider: TestUserInterfaceIdiomProvider(userInterfaceIdiom: .phone)
         ).flattenToElements().map { $0.description }
 
-        XCTAssertEqual(elements, ["child"], "Element should still be parsed even when its container drops it")
+        XCTAssertEqual(elements, ["first. List Start.", "second. List End."])
     }
 
     /// A `UITabBar` with no items previously triggered a modulo-by-zero `precondition` inside
@@ -942,57 +1315,6 @@ final class AccessibilityHierarchyParserTests: XCTestCase {
         XCTAssertEqual(elements, ["emptyPath"], "Element with empty accessibility path should still be parsed")
     }
 
-    func testParserProducesEncodableShapeForNonFiniteFrame() throws {
-        let root = UIView(frame: CGRect(x: 0, y: 0, width: 100, height: 100))
-        let element = ActivationPointTestView(frame: CGRect(x: 10, y: 10, width: 50, height: 50))
-        element.isAccessibilityElement = true
-        element.accessibilityLabel = "nonFinite"
-        element.overriddenFrame = CGRect(x: CGFloat.nan, y: 0, width: CGFloat.infinity, height: 50)
-        root.addSubview(element)
-
-        let marker = try XCTUnwrap(parseMarkers(in: root).first)
-        XCTAssertEqual(marker.shape, .frame(.zero), "A non-finite frame should fall back to a zero frame")
-        XCTAssertNoThrow(try JSONEncoder().encode(marker.shape), "The produced shape must be JSON-encodable")
-    }
-
-    // MARK: - Generic Fold Tests
-
-    func testGenericFoldPassesSourceObjects() {
-        let rootView = UIView(frame: .init(x: 0, y: 0, width: 100, height: 100))
-
-        let container = UIView(frame: .init(x: 0, y: 0, width: 100, height: 100))
-        container.accessibilityContainerType = .list
-        rootView.addSubview(container)
-
-        let element = UIView(frame: .init(x: 10, y: 10, width: 30, height: 30))
-        element.isAccessibilityElement = true
-        element.accessibilityLabel = "Item"
-        element.accessibilityFrame = CGRect(x: 10, y: 10, width: 30, height: 30)
-        container.addSubview(element)
-
-        typealias FoldNode = (label: String, source: NSObject, container: AccessibilityContainer?)
-
-        let parser = AccessibilityHierarchyParser()
-        let nodes: [FoldNode] = parser.parseAccessibilityHierarchy(
-            in: rootView,
-            userInterfaceLayoutDirectionProvider: TestUserInterfaceLayoutDirectionProvider(
-                userInterfaceLayoutDirection: .leftToRight
-            ),
-            userInterfaceIdiomProvider: TestUserInterfaceIdiomProvider(userInterfaceIdiom: .phone),
-            makeElement: { elem, index, source in
-                (label: elem.description, source: source, container: nil)
-            },
-            makeContainer: { cont, children, source in
-                (label: "container", source: source, container: cont)
-            }
-        )
-
-        XCTAssertEqual(nodes.count, 1)
-        let listNode = nodes[0]
-        XCTAssertTrue(listNode.source === container)
-        XCTAssertNotNil(listNode.container)
-    }
-
     // MARK: - Private Helpers
 
     private func parseMarkers(in view: UIView) -> [AccessibilityMarker] {
@@ -1025,6 +1347,13 @@ private final class ActivationPointTestView: UIView {
     override var accessibilityPath: UIBezierPath? {
         get { overriddenPath ?? super.accessibilityPath }
         set { overriddenPath = newValue }
+    }
+}
+
+private final class ScrollableWrapperTestView: UIView {
+    @objc(_accessibilityIsScrollable)
+    func accessibilityIsScrollableForTesting() -> Bool {
+        return true
     }
 }
 

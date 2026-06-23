@@ -4,8 +4,6 @@ import SwiftUI
 
 // MARK: - Number Badge
 
-/// A numbered badge for accessibility element markers.
-/// Used in both overlay (positioned on snapshot) and legend (standalone marker).
 @available(iOS 16.0, *)
 public struct NumberBadge: View {
     public let index: Int
@@ -31,8 +29,6 @@ public struct NumberBadge: View {
 
 // MARK: - Element Overlay
 
-/// Renders an accessibility element overlay on the snapshot.
-/// Combines the shape highlight with a positioned number badge.
 @available(iOS 16.0, *)
 public struct ElementOverlay: View {
     public let index: Int
@@ -64,12 +60,11 @@ public struct ElementOverlay: View {
     private var shapeView: some View {
         if let bounds = frameBounds {
             roundedRectOverlay(rect: bounds)
-        } else if case let .path(path) = shape {
-            pathOverlay(path: path.cgPath)
+        } else if case .path = shape {
+            pathOverlay(path: shape.cgPath)
         }
     }
 
-    /// Returns bounds for frame-like shapes (frames and rectangle paths).
     private var frameBounds: CGRect? {
         switch shape {
         case let .frame(rect):
@@ -113,8 +108,8 @@ public struct ElementOverlay: View {
     private var badgeCenter: CGPoint {
         if let bounds = frameBounds {
             return BadgePlacement.badgeCenter(in: bounds)
-        } else if case let .path(path) = shape {
-            return BadgePlacement.badgeCenter(for: path.cgPath)
+        } else if case .path = shape {
+            return BadgePlacement.badgeCenter(for: shape.cgPath)
         }
         return .zero
     }
@@ -122,7 +117,6 @@ public struct ElementOverlay: View {
 
 // MARK: - CGPath Shape Wrapper
 
-/// A SwiftUI Shape that wraps a CGPath for rendering.
 @available(iOS 16.0, *)
 private struct CGPathShape: Shape {
     let path: CGPath
@@ -134,6 +128,18 @@ private struct CGPathShape: Shape {
             return Path(transformed)
         }
         return Path(path)
+    }
+}
+
+// MARK: - UIKit Bridging
+
+private extension Array where Element == AccessibilityPathElement {
+    var cgPath: CGPath {
+        let path = UIBezierPath()
+        for element in self {
+            element.apply(to: path)
+        }
+        return path.cgPath
     }
 }
 

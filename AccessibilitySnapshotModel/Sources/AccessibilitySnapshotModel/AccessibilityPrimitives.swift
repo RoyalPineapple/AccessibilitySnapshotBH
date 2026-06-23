@@ -10,6 +10,10 @@ public struct AccessibilityPoint: Hashable, Codable, Sendable {
     }
 
     public static let zero = AccessibilityPoint(x: 0, y: 0)
+
+    public var isFinite: Bool {
+        x.isFinite && y.isFinite
+    }
 }
 
 public struct AccessibilitySize: Hashable, Codable, Sendable {

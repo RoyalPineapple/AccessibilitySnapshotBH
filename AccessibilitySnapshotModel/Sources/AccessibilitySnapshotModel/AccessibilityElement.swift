@@ -5,8 +5,8 @@ public struct AccessibilityElement: Hashable, Codable, Sendable {
 
     // MARK: - Public Types
 
-    public struct CustomRotor: Hashable, Codable, Sendable, CustomStringConvertible {
-        public struct ResultMarker: Hashable, Codable, Sendable, CustomStringConvertible {
+    public struct CustomRotor: Hashable, CustomStringConvertible, Codable, Sendable {
+        public struct ResultMarker: Hashable, CustomStringConvertible, Codable, Sendable {
             public let elementDescription: String
             public let rangeDescription: String?
             public let shape: AccessibilityShape?
@@ -52,7 +52,13 @@ public struct AccessibilityElement: Hashable, Codable, Sendable {
         }
     }
 
-    public typealias CustomAction = String
+    public struct CustomAction: Hashable, Codable, Sendable {
+        public var name: String
+
+        public init(name: String) {
+            self.name = name
+        }
+    }
 
     // MARK: - Public Properties
 

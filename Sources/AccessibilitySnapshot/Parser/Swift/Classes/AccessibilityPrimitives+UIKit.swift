@@ -91,24 +91,12 @@ public extension AccessibilityShape {
         case let .frame(rect):
             return UIBezierPath(rect: rect.cgRect)
         case let .path(pathElements):
-            return pathElements.bezierPath
+            let bezier = UIBezierPath()
+            for element in pathElements {
+                element.apply(to: bezier)
+            }
+            return bezier
         }
-    }
-}
-
-public extension Array where Element == AccessibilityPathElement {
-    /// Builds a `UIBezierPath` from the portable path elements.
-    var bezierPath: UIBezierPath {
-        let path = UIBezierPath()
-        for element in self {
-            element.apply(to: path)
-        }
-        return path
-    }
-
-    /// Builds a `CGPath` from the portable path elements.
-    var cgPath: CGPath {
-        bezierPath.cgPath
     }
 }
 

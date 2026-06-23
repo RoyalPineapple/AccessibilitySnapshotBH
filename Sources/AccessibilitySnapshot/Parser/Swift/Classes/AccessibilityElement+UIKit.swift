@@ -6,16 +6,14 @@ import UIKit
 extension AccessibilityElement.CustomRotor {
     init?(from rotor: UIAccessibilityCustomRotor, parentElement: NSObject, root: UIView, context: AccessibilityHierarchyParser.Context? = nil, resultLimit: Int) {
         guard rotor.isKnownRotorType else { return nil }
-
-        let name = rotor.displayName(locale: parentElement.accessibilityLanguage)
-
-        // A nonpositive result limit means the rotor should be preserved as metadata only:
-        // keep its name but don't invoke the search block or collect any results.
         guard resultLimit > 0 else {
-            self.init(name: name, resultMarkers: [], limit: .none)
+            self.init(
+                name: rotor.displayName(locale: parentElement.accessibilityLanguage),
+                resultMarkers: [],
+                limit: .none
+            )
             return
         }
-
         let collected = rotor.collectAllResults(nextLimit: resultLimit, previousLimit: resultLimit)
         let markers: [ResultMarker] = collected.results.compactMap { result in
             guard let element = result.targetElement as? NSObject else { return nil }
@@ -25,7 +23,7 @@ extension AccessibilityElement.CustomRotor {
             if let range = result.targetRange,
                let input = element as? UITextInput
             {
-                if let path = input.accessibilityPath(for: range), path.hasFiniteBounds {
+                if let path = input.accessibilityPath(for: range) {
                     let converted = root.convert(path, from: input as? UIView)
                     shape = .path(AccessibilityPathElement.elements(from: converted.cgPath))
                 }
@@ -37,7 +35,7 @@ extension AccessibilityElement.CustomRotor {
             return ResultMarker(elementDescription: description, rangeDescription: nil, shape: shape)
         }
         self.init(
-            name: name,
+            name: rotor.displayName(locale: parentElement.accessibilityLanguage),
             resultMarkers: markers,
             limit: AccessibilityRotorResultLimit(collected.limit)
         )
