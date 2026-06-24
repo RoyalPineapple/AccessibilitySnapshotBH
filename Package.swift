@@ -1,5 +1,4 @@
 // swift-tools-version:5.3
-// The swift-tools-version declares the minimum version of Swift required to build this package.
 
 import PackageDescription
 
@@ -11,7 +10,6 @@ let package = Package(
         .macOS(.v10_15),
     ],
     products: [
-        // Core + SnapshotTesting for image comparison
         .library(
             name: "AccessibilitySnapshot",
             targets: ["AccessibilitySnapshot"]
@@ -26,6 +24,10 @@ let package = Package(
         .library(
             name: "AccessibilitySnapshotCore",
             targets: ["AccessibilitySnapshotCore"]
+        ),
+        .library(
+            name: "AccessibilitySnapshotModel",
+            targets: ["AccessibilitySnapshotModel"]
         ),
         .library(
             name: "AccessibilitySnapshotParser",
