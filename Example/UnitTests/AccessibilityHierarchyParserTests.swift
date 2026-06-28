@@ -1048,6 +1048,22 @@ final class AccessibilityHierarchyParserTests: XCTestCase {
         XCTAssertTrue(elements.isEmpty, "Expected the NSNotFound count to be treated as no elements, got: \(elements)")
     }
 
+    func testContainerWithZeroCountIsTreatedAsEmpty() {
+        let rootView = UIView(frame: .init(x: 0, y: 0, width: 200, height: 100))
+
+        let container = IndexAPIContainer(elements: [], reportedCount: 0)
+        rootView.accessibilityElements = [container]
+
+        let parser = AccessibilityHierarchyParser()
+        let elements = parser.parseAccessibilityHierarchy(
+            in: rootView,
+            userInterfaceLayoutDirectionProvider: TestUserInterfaceLayoutDirectionProvider(userInterfaceLayoutDirection: .leftToRight),
+            userInterfaceIdiomProvider: TestUserInterfaceIdiomProvider(userInterfaceIdiom: .phone)
+        ).flattenToElements().map { $0.description }
+
+        XCTAssertTrue(elements.isEmpty, "Expected zero count to be treated as no elements, got: \(elements)")
+    }
+
     /// A `UIView` that exposes its children only through the index-based container APIs (nil
     /// `accessibilityElements`) is resolved through that fallback, just like a non-`UIView` container
     /// and just like VoiceOver consumes a `UIAccessibilityContainer`. Because the view vends elements
