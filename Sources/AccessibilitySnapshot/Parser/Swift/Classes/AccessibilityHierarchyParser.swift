@@ -8,19 +8,6 @@ private let parserLog = OSLog(
     category: "Parser"
 )
 
-// MARK: - Accessibility SPI
-
-extension NSObject {
-    var accessibilityIsScrollable: Bool {
-        let sel = NSSelectorFromString("_accessibilityIsScrollable")
-        guard responds(to: sel) else { return false }
-        typealias BoolIMP = @convention(c) (NSObject, Selector) -> Bool
-        let imp = method(for: sel)
-        let fn = unsafeBitCast(imp, to: BoolIMP.self)
-        return fn(self, sel)
-    }
-}
-
 public protocol UserInterfaceLayoutDirectionProviding {
     var userInterfaceLayoutDirection: UIUserInterfaceLayoutDirection { get }
 }
@@ -1005,9 +992,7 @@ private extension NSObject {
         }()
 
         // Non-UIScrollView containers that wrap a UIScrollView child (SwiftUI's
-        // PlatformContainer wraps HostingScrollView). Only match if the view
-        // actually has a UIScrollView child — _accessibilityIsScrollable alone
-        // is too broad (returns YES for every view inside a scrollable context).
+        // PlatformContainer wraps HostingScrollView).
         let scrollableContentSize = scrollableContentSize(for: view)
         let isSemanticGroup = containerType == .semanticGroup
             && (label != nil || value != nil || identifier != nil)
@@ -1053,9 +1038,7 @@ private extension NSObject {
             }
             contentSize = scrollView.contentSize
         } else {
-            guard view.accessibilityIsScrollable,
-                  view.subviews.contains(where: { $0 is UIScrollView })
-            else {
+            guard view.subviews.contains(where: { $0 is UIScrollView }) else {
                 return nil
             }
 
