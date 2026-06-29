@@ -266,7 +266,7 @@ public final class AccessibilityHierarchyParser {
 
     // MARK: - Private Methods
 
-    private func buildElement(
+    func buildElement(
         from object: NSObject,
         context: Context?,
         in root: UIView,

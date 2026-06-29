@@ -166,4 +166,75 @@ final class PrivateAXRuntimeValidationTests: XCTestCase {
             XCTAssertEqual(labelDivergences.count, 0, "Label-in-scroll divergences: \(labelDivergences)")
         #endif
     }
+
+    // MARK: - Parser Comparison
+
+    func testParserComparison_simpleLabels() {
+        let container = UIView(frame: CGRect(x: 0, y: 0, width: 320, height: 480))
+
+        let label1 = UILabel(frame: CGRect(x: 10, y: 10, width: 200, height: 30))
+        label1.text = "First"
+        label1.isAccessibilityElement = true
+        container.addSubview(label1)
+
+        let label2 = UILabel(frame: CGRect(x: 10, y: 50, width: 200, height: 30))
+        label2.text = "Second"
+        label2.isAccessibilityElement = true
+        container.addSubview(label2)
+
+        let label3 = UILabel(frame: CGRect(x: 10, y: 90, width: 200, height: 30))
+        label3.text = "Third"
+        label3.isAccessibilityElement = true
+        container.addSubview(label3)
+
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 320, height: 480))
+        window.addSubview(container)
+        window.makeKeyAndVisible()
+
+        let parser = AccessibilityHierarchyParser()
+
+        let publicResult = parser.parseAccessibilityHierarchy(in: container)
+        let publicLabels = publicResult.flattenToElements().map { $0.label ?? "" }
+
+        #if ACCESSIBILITY_SNAPSHOT_ENABLE_PRIVATE_AX
+            let spiResult = parser.parseAccessibilityHierarchyUsingSPI(in: container)
+            let spiLabels = spiResult.flattenToElements().map { $0.label ?? "" }
+
+            XCTAssertEqual(publicLabels, spiLabels,
+                           "Element order divergence — public: \(publicLabels) spi: \(spiLabels)")
+        #endif
+
+        XCTAssertEqual(publicLabels, ["First", "Second", "Third"])
+    }
+
+    func testParserComparison_buttonAndLabel() {
+        let container = UIView(frame: CGRect(x: 0, y: 0, width: 320, height: 480))
+
+        let button = UIButton(frame: CGRect(x: 10, y: 10, width: 100, height: 44))
+        button.setTitle("Tap Me", for: .normal)
+        container.addSubview(button)
+
+        let label = UILabel(frame: CGRect(x: 10, y: 60, width: 200, height: 30))
+        label.text = "Info"
+        label.isAccessibilityElement = true
+        container.addSubview(label)
+
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 320, height: 480))
+        window.addSubview(container)
+        window.makeKeyAndVisible()
+
+        let parser = AccessibilityHierarchyParser()
+        let publicResult = parser.parseAccessibilityHierarchy(in: container)
+        let publicDescriptions = publicResult.flattenToElements().map { $0.description }
+
+        #if ACCESSIBILITY_SNAPSHOT_ENABLE_PRIVATE_AX
+            let spiResult = parser.parseAccessibilityHierarchyUsingSPI(in: container)
+            let spiDescriptions = spiResult.flattenToElements().map { $0.description }
+
+            XCTAssertEqual(publicDescriptions, spiDescriptions,
+                           "Description divergence — public: \(publicDescriptions) spi: \(spiDescriptions)")
+        #endif
+
+        XCTAssertFalse(publicDescriptions.isEmpty)
+    }
 }

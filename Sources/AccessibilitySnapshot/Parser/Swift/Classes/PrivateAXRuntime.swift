@@ -438,4 +438,107 @@ public extension NSObject {
         }
     }
 
+    // MARK: - SPI Parser
+
+    extension AccessibilityHierarchyParser {
+        /// Parses the accessibility hierarchy using UIKit's internal
+        /// _accessibilityLeafDescendantsWithOptions: API with scanner groups enabled.
+        /// Returns the same [AccessibilityHierarchy] type as the public API parser.
+        ///
+        /// This is a thin shell — UIKit does the walk, the sort, the filtering,
+        /// the container nesting. We just map the output format.
+        public func parseAccessibilityHierarchyUsingSPI(
+            in root: UIView,
+            rotorResultLimit: Int = AccessibilityElement.defaultRotorResultLimit
+        ) -> [AccessibilityHierarchy] {
+            let optionsClass: AnyClass? = NSClassFromString("UIAccessibilityElementTraversalOptions")
+            guard let optionsClass else { return [] }
+
+            let options = (optionsClass as! NSObject.Type).perform(NSSelectorFromString("alloc"))!
+                .takeUnretainedValue()
+                .perform(NSSelectorFromString("init"))!
+                .takeUnretainedValue() as! NSObject
+
+            let setSorted = NSSelectorFromString("setSorted:")
+            let imp1 = options.method(for: setSorted)
+            typealias SetBoolFn = @convention(c) (AnyObject, Selector, Bool) -> Void
+            unsafeBitCast(imp1, to: SetBoolFn.self)(options, setSorted, true)
+
+            let setScannerGroups = NSSelectorFromString("setShouldReturnScannerGroups:")
+            let imp2 = options.method(for: setScannerGroups)
+            unsafeBitCast(imp2, to: SetBoolFn.self)(options, setScannerGroups, true)
+
+            let sel = NSSelectorFromString("_accessibilityLeafDescendantsWithOptions:")
+            guard root.responds(to: sel) else { return [] }
+
+            let result = root.perform(sel, with: options)?.takeUnretainedValue()
+
+            guard let groups = result as? [Any] else { return [] }
+
+            var traversalIndex = 0
+            return mapScannerGroups(groups, in: root, rotorResultLimit: rotorResultLimit, traversalIndex: &traversalIndex)
+        }
+
+        private func mapScannerGroups(
+            _ groups: [Any],
+            in root: UIView,
+            rotorResultLimit: Int,
+            traversalIndex: inout Int
+        ) -> [AccessibilityHierarchy] {
+            var result: [AccessibilityHierarchy] = []
+
+            for item in groups {
+                if let dict = item as? NSDictionary {
+                    let children = dict["GroupElements"] as? [Any] ?? []
+                    let groupLabel = (dict["GroupLabel"] as? NSAttributedString)?.string
+                        ?? dict["GroupLabel"] as? String
+
+                    let mappedChildren = mapScannerGroups(
+                        children, in: root, rotorResultLimit: rotorResultLimit,
+                        traversalIndex: &traversalIndex
+                    )
+
+                    if mappedChildren.isEmpty { continue }
+
+                    if groupLabel != nil || mappedChildren.count > 1 {
+                        let containerType: AccessibilityContainer.ContainerType
+                        if let label = groupLabel {
+                            containerType = .semanticGroup(label: label, value: nil, identifier: nil)
+                        } else {
+                            containerType = .semanticGroup(label: nil, value: nil, identifier: nil)
+                        }
+
+                        let childFrames = mappedChildren.compactMap { node -> CGRect? in
+                            switch node {
+                            case let .element(element, _):
+                                return element.shape.frame.cgRect
+                            case let .container(container, _):
+                                return container.frame.cgRect
+                            }
+                        }
+                        let unionFrame = childFrames.reduce(CGRect.null) { $0.union($1) }
+
+                        let container = AccessibilityContainer(
+                            type: containerType,
+                            frame: AccessibilityRect(unionFrame)
+                        )
+                        result.append(.container(container, children: mappedChildren))
+                    } else {
+                        result.append(contentsOf: mappedChildren)
+                    }
+
+                } else if let element = item as? NSObject {
+                    let built = buildElement(
+                        from: element, context: nil, in: root,
+                        rotorResultLimit: rotorResultLimit
+                    )
+                    result.append(.element(built, traversalIndex: traversalIndex))
+                    traversalIndex += 1
+                }
+            }
+
+            return result
+        }
+    }
+
 #endif // ACCESSIBILITY_SNAPSHOT_ENABLE_PRIVATE_AX
