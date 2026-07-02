@@ -853,11 +853,14 @@ private extension NSObject {
             allowContainerFallback: shouldUseAccessibilityContainerElements
         )
 
-        if let `self` = self as? UIView,
-           self.isHidden || self.alpha <= 0
-           || (self.frame.size == .zero && (self.clipsToBounds || self.isAccessibilityElement || self.accessibilityElements != nil))
-        {
-            return []
+        if let `self` = self as? UIView {
+            if self.isHidden || self.alpha <= 0 {
+                return []
+            }
+            let axFrame = self.accessibilityFrame
+            if axFrame.width < 1, axFrame.height < 1 {
+                return []
+            }
         }
 
         var recursiveAccessibilityHierarchy: [AccessibilityNode] = []
