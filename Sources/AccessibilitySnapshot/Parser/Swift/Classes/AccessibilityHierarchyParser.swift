@@ -955,39 +955,9 @@ private extension NSObject {
     }
 
     private var shouldUseAccessibilityContainerElements: Bool {
-        if isAppleFrameworkObject {
-            return false
-        }
-        if type(of: self) == NSObject.self {
-            return false
-        }
-        if self is UIView {
-            return false
-        }
-        return overridesAccessibilityContainerIndexing
-    }
-
-    private var isAppleFrameworkObject: Bool {
-        let bundleIdentifier = Bundle(for: type(of: self)).bundleIdentifier ?? ""
-        return bundleIdentifier == "com.apple.UIKitCore"
-            || bundleIdentifier == "com.apple.SwiftUI"
-            || bundleIdentifier == "com.apple.Foundation"
-    }
-
-    private var overridesAccessibilityContainerIndexing: Bool {
-        let selectors = [
-            #selector(NSObject.accessibilityElementCount),
-            #selector(NSObject.accessibilityElement(at:)),
-        ]
-        return selectors.contains { selector in
-            guard let objectMethod = class_getInstanceMethod(type(of: self), selector) else {
-                return false
-            }
-            guard let baseMethod = class_getInstanceMethod(NSObject.self, selector) else {
-                return true
-            }
-            return method_getImplementation(objectMethod) != method_getImplementation(baseMethod)
-        }
+        if self is UIView { return false }
+        if isAccessibilityElement { return false }
+        return accessibilityElementCount() != NSNotFound
     }
 
     private func containerInfo(for view: UIView) -> ContainerInfo? {
