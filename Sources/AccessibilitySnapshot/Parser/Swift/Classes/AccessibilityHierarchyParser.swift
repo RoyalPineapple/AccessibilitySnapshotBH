@@ -8,19 +8,6 @@ private let parserLog = OSLog(
     category: "Parser"
 )
 
-// MARK: - Accessibility SPI
-
-extension NSObject {
-    var accessibilityIsScrollable: Bool {
-        let sel = NSSelectorFromString("_accessibilityIsScrollable")
-        guard responds(to: sel) else { return false }
-        typealias BoolIMP = @convention(c) (NSObject, Selector) -> Bool
-        let imp = method(for: sel)
-        let fn = unsafeBitCast(imp, to: BoolIMP.self)
-        return fn(self, sel)
-    }
-}
-
 public protocol UserInterfaceLayoutDirectionProviding {
     var userInterfaceLayoutDirection: UIUserInterfaceLayoutDirection { get }
 }
@@ -978,9 +965,7 @@ private extension NSObject {
         }()
 
         // Non-UIScrollView containers that wrap a UIScrollView child (SwiftUI's
-        // PlatformContainer wraps HostingScrollView). Only match if the view
-        // actually has a UIScrollView child — _accessibilityIsScrollable alone
-        // is too broad (returns YES for every view inside a scrollable context).
+        // PlatformContainer wraps HostingScrollView).
         let scrollableContentSize = scrollableContentSize(for: view)
         let isSemanticGroup = containerType == .semanticGroup
             && (label != nil || value != nil || identifier != nil)
@@ -1015,32 +1000,21 @@ private extension NSObject {
 
     /// Returns scrollable content size only when the content exceeds the view's bounds.
     ///
-    /// UIKit and SwiftUI can expose nested scroll wrappers that are marked scrollable even when
-    /// their content cannot move. Treating those wrappers as transparent preserves their children
-    /// without creating duplicate scrollable containers for the same visual frame.
+    /// For UIScrollView subclasses, reads contentSize directly. For non-UIScrollView
+    /// containers that wrap a UIScrollView child (SwiftUI's PlatformContainer wraps
+    /// HostingScrollView), finds the child scroll view and reads its contentSize.
     private func scrollableContentSize(for view: UIView) -> CGSize? {
-        let contentSize: CGSize
-        if let scrollView = view as? UIScrollView {
-            guard scrollView.isScrollEnabled else {
-                return nil
-            }
-            contentSize = scrollView.contentSize
+        let scrollView: UIScrollView
+        if let sv = view as? UIScrollView {
+            scrollView = sv
+        } else if let sv = view.subviews.first(where: { $0 is UIScrollView }) as? UIScrollView {
+            scrollView = sv
         } else {
-            guard view.accessibilityIsScrollable,
-                  view.subviews.contains(where: { $0 is UIScrollView })
-            else {
-                return nil
-            }
-
-            // Derive content size from children (e.g. PlatformGroupContainer
-            // inside PlatformContainer has the full content frame).
-            let contentFrame = view.subviews.reduce(CGRect.zero) { union, child in
-                union.union(child.frame)
-            }
-            contentSize = contentFrame.size
+            return nil
         }
-
-        return contentSize.isScrollableContentSize(for: view.bounds.size) ? contentSize : nil
+        guard scrollView.isScrollEnabled else { return nil }
+        return scrollView.contentSize.isScrollableContentSize(for: view.bounds.size)
+            ? scrollView.contentSize : nil
     }
 
     /// Whether or not the object provides context to elements beneath it in the hierarchy.
