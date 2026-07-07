@@ -888,16 +888,18 @@ private extension NSObject {
     /// `accessibilityElements` is set (including to an empty array) it is used directly — this covers
     /// UIKit containers such as `UISegmentedControl`, which populate `accessibilityElements` with
     /// their internal elements. When it is `nil`, this falls back to the `accessibilityElementCount()`
-    /// / `accessibilityElement(at:)` container APIs, mirroring how `UIAccessibilityContainer`
-    /// consumers (including VoiceOver) resolve elements — so an object whose children are exposed only
-    /// through those APIs is captured rather than treated as a leaf. The `NSNotFound` sentinel and a
-    /// non-positive count are filtered below, which is what keeps `UIView`s (and other objects that
-    /// don't implement the dynamic container methods) on the caller's existing traversal path: they
-    /// report `NSNotFound` from `accessibilityElementCount()`. Returns `nil` when the object does not
-    /// act as an explicit accessibility container.
+    /// / `accessibilityElement(at:)` container APIs for non-UIView containers only (see
+    /// `shouldUseAccessibilityContainerElements`), mirroring how VoiceOver resolves elements — it
+    /// walks UIView subview hierarchies directly but uses the index-based API for non-UIView
+    /// accessibility containers. Returns `nil` when the object does not act as an explicit
+    /// accessibility container.
     private func resolvedAccessibilityElements() -> [NSObject]? {
         if let elements = accessibilityElements as? [NSObject] {
             return elements
+        }
+
+        guard shouldUseAccessibilityContainerElements else {
+            return nil
         }
 
         // `accessibilityElementCount()` defaults to `NSNotFound` for objects that don't implement the
@@ -921,6 +923,22 @@ private extension NSObject {
             }
         }
         return elements.isEmpty ? nil : elements
+    }
+
+    /// Whether this object should be queried via the `accessibilityElementCount()` /
+    /// `accessibilityElement(at:)` container APIs. UIView-backed objects are excluded because
+    /// VoiceOver walks their subview hierarchy directly rather than using the index-based container
+    /// API. Accessibility elements are excluded because they are leaves, not containers. This
+    /// ensures the index API fallback only activates for non-UIView accessibility containers (e.g.
+    /// `UIAccessibilityElement` subclasses that implement the dynamic container methods).
+    private var shouldUseAccessibilityContainerElements: Bool {
+        if self is UIView {
+            return false
+        }
+        if isAccessibilityElement {
+            return false
+        }
+        return accessibilityElementCount() != NSNotFound
     }
 
     private func containerInfo(for view: UIView) -> ContainerInfo? {
