@@ -228,16 +228,19 @@ public final class AccessibilityHierarchyParser {
             userInterfaceIdiom: userInterfaceIdiom
         )
 
-        var tabBarCache: [UIView: [NSObject]] = [:]
+        // Tab context for `.tabBar`-trait views is derived from graph position: an element's tab
+        // index/count come from its ordered position among the siblings that share the same
+        // tab-bar-trait superview in the already-sorted traversal, rather than from a re-entrant
+        // re-walk of that view's subtree.
+        let tabTraitPositions = tabTraitPositions(in: uncontextualizedElements)
+
         let contextualizedElements = uncontextualizedElements.map { element in
             ContextualElement(
                 object: element.object,
                 context: context(
                     for: element.object,
                     from: element.contextProvider,
-                    userInterfaceLayoutDirection: userInterfaceLayoutDirection,
-                    userInterfaceIdiom: userInterfaceIdiom,
-                    tabBarCache: &tabBarCache
+                    tabTraitPosition: tabTraitPositions[ObjectIdentifier(element.object)]
                 )
             )
         }
@@ -393,13 +396,56 @@ public final class AccessibilityHierarchyParser {
         return sortedElements
     }
 
+    /// Position of an element within its `.tabBar`-trait ancestor, derived from the sorted
+    /// traversal order (1-based index and total count of tab siblings).
+    private struct TabTraitPosition {
+        var index: Int
+        var count: Int
+    }
+
+    /// Derives, for every element whose context provider is a `.tabBar`-trait superview, its ordered
+    /// position among the siblings that share that same superview. The sorted element list already
+    /// reflects VoiceOver's flick order, so an element's index within its tab-bar group is simply its
+    /// rank among the contiguous siblings sharing that provider — no re-walk of the view subtree.
+    private func tabTraitPositions(
+        for elements: [(object: NSObject, contextProvider: ContextProvider?)]
+    ) -> [ObjectIdentifier: TabTraitPosition] {
+        // Group tab-trait elements by their providing view, preserving sorted order.
+        var groups: [ObjectIdentifier: [NSObject]] = [:]
+        var order: [ObjectIdentifier: ObjectIdentifier] = [:]
+        for element in elements {
+            guard case let .superview(view)? = element.contextProvider,
+                  view.accessibilityTraits.contains(.tabBar),
+                  !(view is UITabBar)
+            else {
+                continue
+            }
+            let key = ObjectIdentifier(view)
+            groups[key, default: []].append(element.object)
+            order[ObjectIdentifier(element.object)] = key
+        }
+
+        var positions: [ObjectIdentifier: TabTraitPosition] = [:]
+        for (_, siblings) in groups {
+            for (index, object) in siblings.enumerated() {
+                positions[ObjectIdentifier(object)] = TabTraitPosition(index: index + 1, count: siblings.count)
+            }
+        }
+        return positions
+    }
+
+    /// Convenience overload keyed by object identity used at the call site.
+    private func tabTraitPositions(
+        in elements: [(object: NSObject, contextProvider: ContextProvider?)]
+    ) -> [ObjectIdentifier: TabTraitPosition] {
+        tabTraitPositions(for: elements)
+    }
+
     /// Returns the context for an `element` provided by the `contextProvider`.
     private func context(
         for element: NSObject,
         from contextProvider: ContextProvider?,
-        userInterfaceLayoutDirection: UIUserInterfaceLayoutDirection,
-        userInterfaceIdiom: UIUserInterfaceIdiom,
-        tabBarCache: inout [UIView: [NSObject]]
+        tabTraitPosition: TabTraitPosition?
     ) -> Context? {
         guard let contextProvider = contextProvider else {
             return nil
@@ -442,24 +488,10 @@ public final class AccessibilityHierarchyParser {
 
             // Views that are not `UITabBar`s can use the `.tabBar` accessibility trait to have their elements treated
             // similarly to a `UITabBar`'s tabs (with a few differences). Unlike `UITabBar`s, all elements in the
-            // hierarchy under the view are treated as tabs.
-            if view.accessibilityTraits.contains(.tabBar), let element = element as? UIView {
-                let accessibleElements: [NSObject]
-                if let elements = tabBarCache[view] {
-                    accessibleElements = elements
-                } else {
-                    let hierarchy = view.recursiveAccessibilityHierarchy(isRoot: true, options: options)
-                    accessibleElements = sortedElements(
-                        for: hierarchy,
-                        explicitlyOrdered: false,
-                        in: view,
-                        userInterfaceLayoutDirection: userInterfaceLayoutDirection,
-                        userInterfaceIdiom: userInterfaceIdiom
-                    ).map { $0.object }
-                    tabBarCache[view] = accessibleElements
-                }
-
-                guard let index = accessibleElements.firstIndex(of: element) else {
+            // hierarchy under the view are treated as tabs. The index/count are derived from the element's ordered
+            // position among its tab-bar-trait siblings in the sorted traversal.
+            if view.accessibilityTraits.contains(.tabBar), element is UIView {
+                guard let tabTraitPosition = tabTraitPosition else {
                     os_log(
                         "Tab-bar-trait view does not contain the element being parsed; dropping tab context.",
                         log: parserLog,
@@ -468,8 +500,8 @@ public final class AccessibilityHierarchyParser {
                     return nil
                 }
                 return .tab(
-                    index: index + 1,
-                    count: accessibleElements.count
+                    index: tabTraitPosition.index,
+                    count: tabTraitPosition.count
                 )
             }
 
@@ -613,12 +645,12 @@ public final class AccessibilityHierarchyParser {
             indexLookup[ObjectIdentifier(element.object)] = index
         }
 
-        func mapNode(_ node: AccessibilityNode) -> [(node: Node, sortIndex: Int)] {
+        func mapNode(_ node: AccessibilityNode) -> [(node: Node, sortIndex: Int, source: NSObject?)] {
             switch node {
             case let .element(object, _):
                 guard let index = indexLookup[ObjectIdentifier(object)],
                       index < elements.count else { return [] }
-                return [(makeElement(elements[index], index, object), index)]
+                return [(makeElement(elements[index], index, object), index, object)]
 
             case let .group(children, _, _, containerInfo):
                 let mappedChildren = children.flatMap { mapNode($0) }.sorted { lhs, rhs in
@@ -640,8 +672,15 @@ public final class AccessibilityHierarchyParser {
                         case .landmark:
                             containerType = .landmark
                         case .dataTable:
-                            // Cells are populated in a later commit; empty here preserves today's behavior.
-                            containerType = .dataTable(rowCount: info.rowCount ?? 0, columnCount: info.columnCount ?? 0, cells: [])
+                            let cells = dataTableCells(
+                                for: info.view as? UIAccessibilityContainerDataTable,
+                                orderedSources: mappedChildren.map(\.source)
+                            )
+                            containerType = .dataTable(
+                                rowCount: info.rowCount ?? 0,
+                                columnCount: info.columnCount ?? 0,
+                                cells: cells
+                            )
                         case .none:
                             containerType = .none
                         @unknown default:
@@ -658,7 +697,7 @@ public final class AccessibilityHierarchyParser {
                         customActions: info.customActions
                     )
                     let sortIndex = mappedChildren.map(\.sortIndex).min() ?? Int.max
-                    return [(makeContainer(container, mappedChildren.map(\.node), info.view), sortIndex)]
+                    return [(makeContainer(container, mappedChildren.map(\.node), info.view), sortIndex, info.view)]
                 }
 
                 return mappedChildren
@@ -666,6 +705,104 @@ public final class AccessibilityHierarchyParser {
         }
 
         return nodes.flatMap { mapNode($0) }.map(\.node)
+    }
+
+    /// Captures the per-cell grid facts for a data table once, at node-emission time, aligned to the
+    /// container node's ordered children. `orderedSources` is the source object backing each child in
+    /// traversal order (the same order the node's `children` are stored in); a `nil` source (or a
+    /// source that is not a data-table cell) yields a `nil` entry.
+    ///
+    /// The `isFirstInRow` flag and the header lists are computed here using the exact filtering rules
+    /// the description path uses (the `NSNotFound` rule and the immediately-preceding-header rule),
+    /// then stored on the node so cell context can be derived at delivery from the graph alone. Header
+    /// references are resolved to indices into `orderedSources` so that no live table object is
+    /// retained.
+    private func dataTableCells(
+        for dataTable: UIAccessibilityContainerDataTable?,
+        orderedSources: [NSObject?]
+    ) -> [AccessibilityContainer.DataTableCellInfo?] {
+        guard let dataTable else {
+            return Array(repeating: nil, count: orderedSources.count)
+        }
+
+        // Map each cell source object to its index among the ordered children so header references
+        // can be stored as child indices.
+        var indexBySource: [ObjectIdentifier: Int] = [:]
+        for (index, source) in orderedSources.enumerated() {
+            if let source {
+                indexBySource[ObjectIdentifier(source)] = index
+            }
+        }
+
+        func childIndices(of headers: [NSObject]) -> [Int] {
+            headers.compactMap { indexBySource[ObjectIdentifier($0)] }
+        }
+
+        return orderedSources.map { source -> AccessibilityContainer.DataTableCellInfo? in
+            guard let cell = source as? UIAccessibilityContainerDataTableCell else {
+                return nil
+            }
+
+            let rowRange = cell.accessibilityRowRange()
+            let row = rowRange.location
+
+            let columnRange = cell.accessibilityColumnRange()
+            let column = columnRange.location
+
+            // Mirrors the description path: the first cell in a row is the earliest-columned cell
+            // VoiceOver will read. A cell with a column of `NSNotFound` is never first-in-row.
+            let isFirstInRow = column != NSNotFound
+                && row != NSNotFound
+                && !(0 ..< columnRange.location).contains {
+                    dataTable.accessibilityDataTableCellElement(forRow: rowRange.location, column: $0) != nil
+                }
+
+            let rowHeaders: [NSObject]
+            if isFirstInRow, let allHeaders = dataTable.accessibilityHeaderElements?(forRow: row) {
+                rowHeaders = allHeaders.filter { header in
+                    true
+                        // The cell is not read as a header for itself.
+                        && header !== cell
+                        // The header is not read if it is not a cell in the table.
+                        && dataTable.accessibilityDataTableCellElement(forRow: header.accessibilityRowRange().location, column: header.accessibilityColumnRange().location) === header
+                }.compactMap { $0 as? NSObject }
+            } else {
+                rowHeaders = []
+            }
+
+            let columnHeaders: [NSObject]
+            if let allHeaders = dataTable.accessibilityHeaderElements?(forColumn: column) {
+                columnHeaders = allHeaders.filter { header in
+                    let headerRow = header.accessibilityRowRange().location
+                    let headerColumn = header.accessibilityColumnRange().location
+
+                    // The header is not read as a header for itself.
+                    if header === cell {
+                        return false
+                    }
+
+                    // The header is not read if it is immediately preceding the cell when the cell is
+                    // the first in its row.
+                    if row != NSNotFound, headerRow == row - 1, headerColumn == column, isFirstInRow {
+                        return false
+                    }
+
+                    return true
+                }.compactMap { $0 as? NSObject }
+            } else {
+                columnHeaders = []
+            }
+
+            return AccessibilityContainer.DataTableCellInfo(
+                row: row,
+                column: column,
+                rowSpan: rowRange.length,
+                columnSpan: columnRange.length,
+                isFirstInRow: isFirstInRow,
+                rowHeaderChildIndices: childIndices(of: rowHeaders),
+                columnHeaderChildIndices: childIndices(of: columnHeaders)
+            )
+        }
     }
 }
 
