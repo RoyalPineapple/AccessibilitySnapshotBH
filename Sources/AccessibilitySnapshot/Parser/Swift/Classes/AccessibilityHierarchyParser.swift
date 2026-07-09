@@ -22,22 +22,6 @@ extension UIDevice: UserInterfaceIdiomProviding {}
 
 // MARK: -
 
-public struct ParserOptions {
-    /// When `false` (the default), elements whose accessibility frame does not
-    /// visibly intersect the viewport are pruned during the tree walk — mirroring
-    /// the SPI's `shouldOnlyIncludeElementsWithVisibleFrame` behavior. Set to
-    /// `true` to capture every element that exists in the subview hierarchy,
-    /// including off-screen prefetched cells and lazily-loaded SwiftUI content.
-    public var includeOffScreenElements: Bool
-
-    public init(includeOffScreenElements: Bool = false) {
-        self.includeOffScreenElements = includeOffScreenElements
-    }
-
-    public static let `default` = ParserOptions()
-    public static let fullTree = ParserOptions(includeOffScreenElements: true)
-}
-
 public final class AccessibilityHierarchyParser {
     // MARK: - Public Types
 
@@ -109,11 +93,7 @@ public final class AccessibilityHierarchyParser {
 
     // MARK: - Life Cycle
 
-    public let options: ParserOptions
-
-    public init(options: ParserOptions = .default) {
-        self.options = options
-    }
+    public init() {}
 
     // MARK: - Public Methods
 
@@ -216,8 +196,7 @@ public final class AccessibilityHierarchyParser {
         let userInterfaceIdiom = userInterfaceIdiomProvider.userInterfaceIdiom
 
         let accessibilityNodes = root.recursiveAccessibilityHierarchy(
-            isRoot: true,
-            options: options
+            isRoot: true
         )
 
         let uncontextualizedElements = sortedElements(
@@ -245,8 +224,14 @@ public final class AccessibilityHierarchyParser {
             )
         }
 
-        let elements: [AccessibilityElement] = contextualizedElements.map { element in
-            buildElement(from: element.object, context: element.context, in: root, rotorResultLimit: rotorResultLimit)
+        let elements: [AccessibilityElement] = zip(contextualizedElements, uncontextualizedElements).map { contextualized, sorted in
+            buildElement(
+                from: contextualized.object,
+                context: contextualized.context,
+                in: root,
+                rotorResultLimit: rotorResultLimit,
+                visibility: sorted.visibility
+            )
         }
 
         return foldNodes(
@@ -299,7 +284,8 @@ public final class AccessibilityHierarchyParser {
         from object: NSObject,
         context: Context?,
         in root: UIView,
-        rotorResultLimit: Int
+        rotorResultLimit: Int,
+        visibility: AccessibilityVisibility
     ) -> AccessibilityElement {
         let (description, hint) = object.accessibilityDescription(context: context)
         let activationPoint = object.accessibilityActivationPoint
@@ -323,7 +309,8 @@ public final class AccessibilityHierarchyParser {
             customContent: object.customContent,
             customRotors: object.customRotors(in: root, context: context, resultLimit: rotorResultLimit),
             accessibilityLanguage: object.accessibilityLanguage,
-            respondsToUserInteraction: object.accessibilityRespondsToUserInteraction
+            respondsToUserInteraction: object.accessibilityRespondsToUserInteraction,
+            visibility: visibility
         )
     }
 
@@ -341,7 +328,7 @@ public final class AccessibilityHierarchyParser {
         in root: UIView,
         userInterfaceLayoutDirection: UIUserInterfaceLayoutDirection,
         userInterfaceIdiom: UIUserInterfaceIdiom = UIDevice.current.userInterfaceIdiom
-    ) -> [(object: NSObject, contextParent: ContextParent?)] {
+    ) -> [(object: NSObject, contextParent: ContextParent?, visibility: AccessibilityVisibility)] {
         // VoiceOver flick navigation iterates through elements in a horizontal, then vertical order. The horizontal
         // ordering matches the application's user interface layout direction. The vertical ordering is always
         // top-to-bottom. There are a couple exceptions to the order of iteration:
@@ -389,12 +376,12 @@ public final class AccessibilityHierarchyParser {
             }
             .map { $0.0 }
 
-        var sortedElements: [(object: NSObject, contextParent: ContextParent?)] = []
+        var sortedElements: [(object: NSObject, contextParent: ContextParent?, visibility: AccessibilityVisibility)] = []
 
         for node in sortedNodes {
             switch node {
-            case let .element(element, contextParent):
-                sortedElements.append((object: element, contextParent: contextParent))
+            case let .element(element, contextParent, visibility):
+                sortedElements.append((object: element, contextParent: contextParent, visibility: visibility))
 
             case let .group(elements, explicitlyOrdered, _, _):
                 sortedElements.append(
@@ -424,7 +411,7 @@ public final class AccessibilityHierarchyParser {
     /// reflects VoiceOver's flick order, so an element's index within its tab-bar group is simply its
     /// rank among the contiguous siblings sharing that parent — no re-walk of the view subtree.
     private func tabTraitPositions(
-        in elements: [(object: NSObject, contextParent: ContextParent?)]
+        in elements: [(object: NSObject, contextParent: ContextParent?, visibility: AccessibilityVisibility)]
     ) -> [ObjectIdentifier: TabTraitPosition] {
         // Group tab-trait elements by their providing view, preserving sorted order.
         var groups: [ObjectIdentifier: [NSObject]] = [:]
@@ -652,7 +639,7 @@ public final class AccessibilityHierarchyParser {
     /// the minimum sort key among its children.
     private func foldNodes<Node>(
         _ nodes: [AccessibilityNode],
-        sortedElements: [(object: NSObject, contextParent: ContextParent?)],
+        sortedElements: [(object: NSObject, contextParent: ContextParent?, visibility: AccessibilityVisibility)],
         elements: [AccessibilityElement],
         in root: UIView,
         makeElement: (AccessibilityElement, _ traversalIndex: Int, _ source: NSObject) -> Node,
@@ -665,7 +652,7 @@ public final class AccessibilityHierarchyParser {
 
         func mapNode(_ node: AccessibilityNode) -> [(node: Node, sortIndex: Int, source: NSObject?)] {
             switch node {
-            case let .element(object, _):
+            case let .element(object, _, _):
                 guard let index = indexLookup[ObjectIdentifier(object)],
                       index < elements.count else { return [] }
                 return [(makeElement(elements[index], index, object), index, object)]
@@ -920,7 +907,7 @@ private extension AccessibilityHierarchyParser {
         minimumVerticalSeparation: CGFloat
     ) -> CGRect {
         switch node {
-        case let .element(frameProvider, _),
+        case let .element(frameProvider, _, _),
              let .group(_, _, frameProvider?, _):
             switch accessibilityShape(for: frameProvider, in: root, preferPath: false) {
             case let .frame(rect):
@@ -1009,7 +996,11 @@ private struct ContainerInfo {
 
 private enum AccessibilityNode {
     /// Represents a single accessibility element.
-    case element(NSObject, contextParent: AccessibilityHierarchyParser.ContextParent?)
+    ///
+    /// `visibility` records whether the element's frame intersects the visible region of its
+    /// scrollable ancestors at parse time. The parser always walks the full tree and stamps this
+    /// flag rather than pruning off-screen elements, so trimming becomes a delivery-time decision.
+    case element(NSObject, contextParent: AccessibilityHierarchyParser.ContextParent?, visibility: AccessibilityVisibility)
 
     /// Represents a group of accessibility elements (or nested groups) that should be iterated through together,
     /// without interspersing other elements.
@@ -1033,11 +1024,17 @@ private extension NSObject {
     func recursiveAccessibilityHierarchy(
         contextParent: AccessibilityHierarchyParser.ContextParent? = nil,
         isRoot: Bool = false,
-        options: ParserOptions = .default
+        inheritsOffscreen: Bool = false
     ) -> [AccessibilityNode] {
         guard !accessibilityElementsHidden else {
             return []
         }
+
+        // Off-screen-ness is metadata, not a prune: the parser keeps descending and stamps each
+        // element with a visibility flag. `inheritsOffscreen` carries an ancestor's off-screen state
+        // down so descendants of an off-screen view are themselves off-screen — reproducing today's
+        // descent-gating as a flag instead of a `return []`.
+        var isOffscreen = inheritsOffscreen
 
         if let `self` = self as? UIView {
             if self.isHidden || self.alpha <= 0 {
@@ -1053,15 +1050,18 @@ private extension NSObject {
                 return []
             }
 
-            if !isRoot, !options.includeOffScreenElements, !self.hasVisibleFrame() {
-                return []
+            if !isRoot, !self.hasVisibleFrame() {
+                isOffscreen = true
             }
         }
 
         var recursiveAccessibilityHierarchy: [AccessibilityNode] = []
 
         if isAccessibilityElement {
-            if !(self is UIView), !options.includeOffScreenElements {
+            if !isOffscreen, !(self is UIView) {
+                // Zero-frame non-UIView elements stay on-screen (the width/height precondition
+                // preserves that). A framed non-UIView element clipped out by a scrollable ancestor
+                // is marked off-screen rather than pruned.
                 let frame = accessibilityFrame
                 if frame.width > 0, frame.height > 0,
                    let containerView = nearestContainerView(for: self),
@@ -1069,11 +1069,13 @@ private extension NSObject {
                 {
                     let clipped = clipFrameAgainstAncestors(frame, startingFrom: containerView)
                     if clipped.isNull || clipped.width <= visibleFrameMinDimension || clipped.height <= visibleFrameMinDimension {
-                        return []
+                        isOffscreen = true
                     }
                 }
             }
-            recursiveAccessibilityHierarchy.append(.element(self, contextParent: contextParent))
+            recursiveAccessibilityHierarchy.append(
+                .element(self, contextParent: contextParent, visibility: isOffscreen ? .offscreen : .onscreen)
+            )
 
         } else if let accessibilityElements = resolvedAccessibilityElements(
             allowContainerFallback: shouldUseAccessibilityContainerElements
@@ -1095,7 +1097,7 @@ private extension NSObject {
                     contentsOf: element.recursiveAccessibilityHierarchy(
                         contextParent: childContextParent,
                         isRoot: false,
-                        options: options
+                        inheritsOffscreen: isOffscreen
                     )
                 )
             }
@@ -1127,7 +1129,7 @@ private extension NSObject {
                     contentsOf: subview.recursiveAccessibilityHierarchy(
                         contextParent: contextParent ?? superviewContextParent(),
                         isRoot: false,
-                        options: options
+                        inheritsOffscreen: isOffscreen
                     )
                 )
             }

@@ -663,7 +663,7 @@ final class UIViewIndexAPIValidationTests: XCTestCase {
                 )?.takeUnretainedValue() as? [NSObject] ?? []
                 let spiIdentities = spiResult.map { ElementIdentity(from: $0) }
 
-                let parserIdentities = AccessibilityHierarchyParser(options: .fullTree)
+                let parserIdentities = AccessibilityHierarchyParser()
                     .parseAccessibilityHierarchy(in: vc.view)
                     .flattenToElements()
                     .map { ElementIdentity(from: $0) }
@@ -687,7 +687,7 @@ final class UIViewIndexAPIValidationTests: XCTestCase {
                 let spiResult = vc.view.perform(sel, with: voGroupOptions)?.takeUnretainedValue() as? [NSObject] ?? []
                 let spiIdentities = spiResult.map { ElementIdentity(from: $0) }
 
-                let parserIdentities = AccessibilityHierarchyParser(options: .fullTree)
+                let parserIdentities = AccessibilityHierarchyParser()
                     .parseAccessibilityHierarchy(in: vc.view)
                     .flattenToElements()
                     .map { ElementIdentity(from: $0) }
