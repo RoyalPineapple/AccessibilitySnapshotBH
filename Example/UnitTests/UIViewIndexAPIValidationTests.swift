@@ -383,6 +383,25 @@ final class UIViewIndexAPIValidationTests: XCTestCase {
         window.isHidden = true
     }
 
+    func testTableEnumerationProducesCorrectVisibleSet() {
+        let vc = ScrollViewAccessibilityViewController(scrollPosition: .bottom)
+        vc.view.frame = CGRect(x: 0, y: 0, width: 375, height: 400)
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 375, height: 400))
+        window.rootViewController = vc
+        window.makeKeyAndVisible()
+        window.layoutIfNeeded()
+        RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+
+        let hierarchy = AccessibilityHierarchyParser().parseAccessibilityHierarchy(in: vc.view)
+        let all = hierarchy.flattenToElements().filter { ($0.label ?? "").hasPrefix("Row ") }
+        let visible = hierarchy.deliver(options: .trimmed).elements.filter { ($0.label ?? "").hasPrefix("Row ") }
+        print("TABLE ENUM: all=\(all.count) visible=\(visible.count) visibleLabels=\(visible.map { $0.label ?? "" })")
+        XCTAssertEqual(all.count, 30, "index API should enumerate all 30 rows")
+        // SPI visibleFrameOnly reports 8 (rows 22-29) at this scroll position.
+        XCTAssertEqual(visible.count, 8, "deliver(.trimmed) should match SPI's 8 visible rows")
+        window.isHidden = true
+    }
+
     // MARK: - Helpers
 
     private static func makeSemanticGroupVC() -> UIViewController {
@@ -479,7 +498,6 @@ final class UIViewIndexAPIValidationTests: XCTestCase {
     func testParserMatchesSPI_tableView_top() {
         assertParserMatchesSPI(
             makeVC: { ScrollViewAccessibilityViewController(scrollPosition: .top) },
-            skipFullTree: true,
             label: "TableView top"
         )
     }
@@ -487,7 +505,6 @@ final class UIViewIndexAPIValidationTests: XCTestCase {
     func testParserMatchesSPI_tableView_middle() {
         assertParserMatchesSPI(
             makeVC: { ScrollViewAccessibilityViewController(scrollPosition: .middle) },
-            skipFullTree: true,
             label: "TableView middle"
         )
     }
@@ -495,7 +512,6 @@ final class UIViewIndexAPIValidationTests: XCTestCase {
     func testParserMatchesSPI_tableView_bottom() {
         assertParserMatchesSPI(
             makeVC: { ScrollViewAccessibilityViewController(scrollPosition: .bottom) },
-            skipFullTree: true,
             label: "TableView bottom"
         )
     }

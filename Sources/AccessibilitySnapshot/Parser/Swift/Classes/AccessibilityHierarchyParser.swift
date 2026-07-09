@@ -1059,18 +1059,25 @@ private extension NSObject {
 
         if isAccessibilityElement {
             if !isOffscreen, !(self is UIView) {
-                // Zero-frame non-UIView elements stay on-screen (the width/height precondition
-                // preserves that). A framed non-UIView element clipped out by a scrollable ancestor
-                // is marked off-screen rather than pruned.
+                // A framed non-UIView element clipped out by a scrollable ancestor is marked
+                // off-screen rather than pruned.
                 let frame = accessibilityFrame
-                if frame.width > 0, frame.height > 0,
-                   let containerView = nearestContainerView(for: self),
-                   containerView.window != nil
-                {
-                    let clipped = clipFrameAgainstAncestors(frame, startingFrom: containerView)
-                    if clipped.isNull || clipped.width <= visibleFrameMinDimension || clipped.height <= visibleFrameMinDimension {
-                        isOffscreen = true
+                if frame.width > 0, frame.height > 0 {
+                    if let containerView = nearestContainerView(for: self),
+                       containerView.window != nil
+                    {
+                        let clipped = clipFrameAgainstAncestors(frame, startingFrom: containerView)
+                        if clipped.isNull || clipped.width <= visibleFrameMinDimension || clipped.height <= visibleFrameMinDimension {
+                            isOffscreen = true
+                        }
                     }
+                } else {
+                    // A non-UIView *leaf* that reports no frame during the walk has no visible
+                    // presence, so it is off-screen. (An off-screen UITableViewCellAccessibilityElement
+                    // whose cell isn't instantiated reports a zero frame here.) This branch is reached
+                    // only for leaves — a zero-frame *container* wrapper is `!isAccessibilityElement`
+                    // and passes its visible children through elsewhere, unaffected.
+                    isOffscreen = true
                 }
             }
             recursiveAccessibilityHierarchy.append(
@@ -1174,6 +1181,13 @@ private extension NSObject {
 
     private var shouldUseAccessibilityContainerElements: Bool {
         if self is UIView {
+            // Scroll views (UITableView/UICollectionView) vend all their rows — including
+            // off-screen ones — through the index API, the way VoiceOver enumerates them.
+            // Plain UIViews are walked via subviews (their index API is a no-op).
+            if self is UIScrollView, !isAccessibilityElement {
+                let count = accessibilityElementCount()
+                return count != NSNotFound && count > 0
+            }
             return false
         }
         if isAccessibilityElement {
