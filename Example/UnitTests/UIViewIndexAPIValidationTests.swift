@@ -630,6 +630,8 @@ final class UIViewIndexAPIValidationTests: XCTestCase {
         }
 
         // --- Configuration 1: visible-frame filtering (pruning on) ---
+        // The parser now always produces the full tree; trimming off-screen elements is a delivery
+        // transform. `deliver(.trimmed)` is the analog of the SPI's `visibleFrameOnly` pruning.
         do {
             let spiResult = vc.view.perform(
                 sel, with: Self.makeOptions(optionsClass, visibleFrameOnly: true)
@@ -638,7 +640,8 @@ final class UIViewIndexAPIValidationTests: XCTestCase {
 
             let parserIdentities = AccessibilityHierarchyParser()
                 .parseAccessibilityHierarchy(in: vc.view)
-                .flattenToElements()
+                .deliver(options: .trimmed)
+                .elements
                 .map { ElementIdentity(from: $0) }
 
             print("\(label) [pruned] — SPI: \(spiIdentities.count), Parser: \(parserIdentities.count)")
