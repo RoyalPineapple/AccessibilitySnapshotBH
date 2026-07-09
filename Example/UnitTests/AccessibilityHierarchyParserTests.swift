@@ -607,7 +607,7 @@ final class AccessibilityHierarchyParserTests: XCTestCase {
         XCTAssertEqual(hierarchy.count, 1)
 
         if case let .container(container, children) = hierarchy.first {
-            if case let .dataTable(rowCount, columnCount) = container.type {
+            if case let .dataTable(rowCount, columnCount, _) = container.type {
                 XCTAssertEqual(rowCount, 5)
                 XCTAssertEqual(columnCount, 4)
             } else {

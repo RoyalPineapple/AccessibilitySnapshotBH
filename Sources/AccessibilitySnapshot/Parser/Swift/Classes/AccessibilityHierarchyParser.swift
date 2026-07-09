@@ -640,7 +640,8 @@ public final class AccessibilityHierarchyParser {
                         case .landmark:
                             containerType = .landmark
                         case .dataTable:
-                            containerType = .dataTable(rowCount: info.rowCount ?? 0, columnCount: info.columnCount ?? 0)
+                            // Cells are populated in a later commit; empty here preserves today's behavior.
+                            containerType = .dataTable(rowCount: info.rowCount ?? 0, columnCount: info.columnCount ?? 0, cells: [])
                         case .none:
                             containerType = .none
                         @unknown default:
