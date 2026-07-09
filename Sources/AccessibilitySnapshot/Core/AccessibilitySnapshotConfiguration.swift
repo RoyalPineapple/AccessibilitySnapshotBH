@@ -70,6 +70,11 @@ public struct AccessibilitySnapshotConfiguration {
     /// visible-frame filtering (and this fork's historical output).
     public let deliveryOptions: DeliveryOptions
 
+    /// Whether to render an extra legend row per scroll container summarizing how many off-screen
+    /// elements were trimmed above/below its viewport. Off by default; the default legend is
+    /// unchanged when this is `false`.
+    public let showsOffscreenElementCounts: Bool
+
     // MARK: - Initialization
 
     /// Creates a new accessibility snapshot configuration.
@@ -93,7 +98,8 @@ public struct AccessibilitySnapshotConfiguration {
         includesCustomRotors: AccessibilityContentDisplayMode = .whenOverridden,
         rotorResultLimit: Int = AccessibilityMarker.defaultRotorResultLimit,
         showsUnspokenTraits: Bool = true,
-        deliveryOptions: DeliveryOptions = .trimmed
+        deliveryOptions: DeliveryOptions = .trimmed,
+        showsOffscreenElementCounts: Bool = false
     ) {
         rendering = Rendering(renderMode: viewRenderingMode, colorMode: colorRenderingMode)
         rotors = Rotors(displayMode: includesCustomRotors, resultLimit: rotorResultLimit)
@@ -102,6 +108,7 @@ public struct AccessibilitySnapshotConfiguration {
         inputLabelDisplayMode = includesInputLabels
         self.showsUnspokenTraits = showsUnspokenTraits
         self.deliveryOptions = deliveryOptions
+        self.showsOffscreenElementCounts = showsOffscreenElementCounts
     }
 }
 
