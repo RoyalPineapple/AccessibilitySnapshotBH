@@ -237,9 +237,9 @@ public final class AccessibilityHierarchyParser {
         let contextualizedElements = uncontextualizedElements.map { element in
             ContextualElement(
                 object: element.object,
-                context: context(
+                context: derivedContext(
                     for: element.object,
-                    from: element.contextProvider,
+                    parent: element.contextParent,
                     tabTraitPosition: tabTraitPositions[ObjectIdentifier(element.object)]
                 )
             )
@@ -269,12 +269,28 @@ public final class AccessibilityHierarchyParser {
         var context: Context?
     }
 
-    fileprivate enum ContextProvider {
-        case superview(UIView)
+    /// The nearest ancestor that lends context to an element, captured once during the downward walk.
+    ///
+    /// This replaces the old re-entrant `ContextProvider` machinery: rather than looping back into the
+    /// UIKit tree to recover an element's position, the parent — and, for enumerated accessibility
+    /// containers, the element's position within that parent — is captured at enumeration time and the
+    /// `Context` is derived purely from graph position afterwards.
+    fileprivate struct ContextParent {
+        /// The context-providing ancestor object (a `UISegmentedControl`, `UITabBar`, a `.tabBar`-trait
+        /// view, a `.list`/`.landmark` container, or a `UIAccessibilityContainerDataTable`).
+        let object: NSObject
 
-        case accessibilityContainer(NSObject, elementIndex: Int?, elementCount: Int?)
+        /// The element's index/count within `object` when `object` vends its children through the
+        /// accessibility-container API (`accessibilityElements` / `accessibilityElement(at:)`). `nil`
+        /// for superview- and data-table-sourced parents, whose positions are derived elsewhere.
+        let capturedIndex: Int?
+        let capturedCount: Int?
 
-        case dataTable(UIAccessibilityContainerDataTable)
+        init(object: NSObject, capturedIndex: Int? = nil, capturedCount: Int? = nil) {
+            self.object = object
+            self.capturedIndex = capturedIndex
+            self.capturedCount = capturedCount
+        }
     }
 
     // MARK: - Private Methods
@@ -325,7 +341,7 @@ public final class AccessibilityHierarchyParser {
         in root: UIView,
         userInterfaceLayoutDirection: UIUserInterfaceLayoutDirection,
         userInterfaceIdiom: UIUserInterfaceIdiom = UIDevice.current.userInterfaceIdiom
-    ) -> [(object: NSObject, contextProvider: ContextProvider?)] {
+    ) -> [(object: NSObject, contextParent: ContextParent?)] {
         // VoiceOver flick navigation iterates through elements in a horizontal, then vertical order. The horizontal
         // ordering matches the application's user interface layout direction. The vertical ordering is always
         // top-to-bottom. There are a couple exceptions to the order of iteration:
@@ -373,12 +389,12 @@ public final class AccessibilityHierarchyParser {
             }
             .map { $0.0 }
 
-        var sortedElements: [(object: NSObject, contextProvider: ContextProvider?)] = []
+        var sortedElements: [(object: NSObject, contextParent: ContextParent?)] = []
 
         for node in sortedNodes {
             switch node {
-            case let .element(element, contextProvider):
-                sortedElements.append((object: element, contextProvider: contextProvider))
+            case let .element(element, contextParent):
+                sortedElements.append((object: element, contextParent: contextParent))
 
             case let .group(elements, explicitlyOrdered, _, _):
                 sortedElements.append(
@@ -403,26 +419,23 @@ public final class AccessibilityHierarchyParser {
         var count: Int
     }
 
-    /// Derives, for every element whose context provider is a `.tabBar`-trait superview, its ordered
-    /// position among the siblings that share that same superview. The sorted element list already
+    /// Derives, for every element whose context parent is a `.tabBar`-trait view, its ordered
+    /// position among the siblings that share that same parent. The sorted element list already
     /// reflects VoiceOver's flick order, so an element's index within its tab-bar group is simply its
-    /// rank among the contiguous siblings sharing that provider — no re-walk of the view subtree.
+    /// rank among the contiguous siblings sharing that parent — no re-walk of the view subtree.
     private func tabTraitPositions(
-        for elements: [(object: NSObject, contextProvider: ContextProvider?)]
+        in elements: [(object: NSObject, contextParent: ContextParent?)]
     ) -> [ObjectIdentifier: TabTraitPosition] {
         // Group tab-trait elements by their providing view, preserving sorted order.
         var groups: [ObjectIdentifier: [NSObject]] = [:]
-        var order: [ObjectIdentifier: ObjectIdentifier] = [:]
         for element in elements {
-            guard case let .superview(view)? = element.contextProvider,
-                  view.accessibilityTraits.contains(.tabBar),
-                  !(view is UITabBar)
+            guard let parent = element.contextParent?.object as? UIView,
+                  parent.accessibilityTraits.contains(.tabBar),
+                  !(parent is UITabBar)
             else {
                 continue
             }
-            let key = ObjectIdentifier(view)
-            groups[key, default: []].append(element.object)
-            order[ObjectIdentifier(element.object)] = key
+            groups[ObjectIdentifier(parent), default: []].append(element.object)
         }
 
         var positions: [ObjectIdentifier: TabTraitPosition] = [:]
@@ -434,194 +447,199 @@ public final class AccessibilityHierarchyParser {
         return positions
     }
 
-    /// Convenience overload keyed by object identity used at the call site.
-    private func tabTraitPositions(
-        in elements: [(object: NSObject, contextProvider: ContextProvider?)]
-    ) -> [ObjectIdentifier: TabTraitPosition] {
-        tabTraitPositions(for: elements)
-    }
-
-    /// Returns the context for an `element` provided by the `contextProvider`.
-    private func context(
+    /// Derives an element's `Context` purely from its graph position: the role of its captured
+    /// context parent plus its position within that parent. Replaces the old provider-driven
+    /// `context(for:from:)`.
+    private func derivedContext(
         for element: NSObject,
-        from contextProvider: ContextProvider?,
+        parent: ContextParent?,
         tabTraitPosition: TabTraitPosition?
     ) -> Context? {
-        guard let contextProvider = contextProvider else {
+        guard let parent = parent else {
             return nil
         }
 
-        switch contextProvider {
-        case let .superview(view):
-            if let tabBar = view as? UITabBar, let element = element as? UIView {
-                let tabBarButtons = view.allUITabBarButtons()
-                let tabBarItems = tabBar.items ?? []
+        let parentObject = parent.object
 
-                // An unexpected tab bar shape — no items, a button count that isn't a multiple
-                // of the item count, or a button that isn't in our list — should not crash the
-                // process. Skip context for this element instead; it will still be parsed.
-                //
-                // Some UIKit tab bars expose multiple button sets at different levels in the
-                // view hierarchy, so the total count may be a multiple of the item count.
-                guard !tabBarItems.isEmpty,
-                      tabBarButtons.count % tabBarItems.count == 0,
-                      let index = tabBarButtons.firstIndex(of: element)
-                else {
-                    os_log(
-                        "UITabBar has an unexpected shape (buttons=%{public}d, items=%{public}d); dropping tab-bar context for element.",
-                        log: parserLog,
-                        type: .error,
-                        tabBarButtons.count,
-                        tabBarItems.count
-                    )
-                    return nil
-                }
+        // UITabBar: derive the tab index from the tab-bar button ordering and the item count.
+        if let tabBar = parentObject as? UITabBar, let element = element as? UIView {
+            let tabBarButtons = tabBar.allUITabBarButtons()
+            let tabBarItems = tabBar.items ?? []
 
-                let tabIndex = index % tabBarItems.count
-
-                return .tabBarItem(
-                    index: tabIndex + 1,
-                    count: tabBarItems.count,
-                    item: tabBarItems[tabIndex]
-                )
-            }
-
-            // Views that are not `UITabBar`s can use the `.tabBar` accessibility trait to have their elements treated
-            // similarly to a `UITabBar`'s tabs (with a few differences). Unlike `UITabBar`s, all elements in the
-            // hierarchy under the view are treated as tabs. The index/count are derived from the element's ordered
-            // position among its tab-bar-trait siblings in the sorted traversal.
-            if view.accessibilityTraits.contains(.tabBar), element is UIView {
-                guard let tabTraitPosition = tabTraitPosition else {
-                    os_log(
-                        "Tab-bar-trait view does not contain the element being parsed; dropping tab context.",
-                        log: parserLog,
-                        type: .error
-                    )
-                    return nil
-                }
-                return .tab(
-                    index: tabTraitPosition.index,
-                    count: tabTraitPosition.count
-                )
-            }
-
-        case let .accessibilityContainer(container, capturedElementIndex, capturedElementCount):
-            let elementIndex = capturedElementIndex ?? container.index(ofAccessibilityElement: element)
-            let elementCount = capturedElementCount ?? container.accessibilityElementCount()
-
-            // The container may not actually contain the element if its accessibility tree is in
-            // an inconsistent state. Drop context for this element rather than crashing.
-            guard elementIndex != NSNotFound,
-                  elementIndex >= 0,
-                  elementCount > 0,
-                  elementIndex < elementCount
+            // An unexpected tab bar shape — no items, a button count that isn't a multiple of the
+            // item count, or a button that isn't in our list — should not crash the process. Skip
+            // context for this element instead; it will still be parsed.
+            //
+            // Some UIKit tab bars expose multiple button sets at different levels in the view
+            // hierarchy, so the total count may be a multiple of the item count.
+            guard !tabBarItems.isEmpty,
+                  tabBarButtons.count % tabBarItems.count == 0,
+                  let index = tabBarButtons.firstIndex(of: element)
             else {
                 os_log(
-                    "Accessibility container reported NSNotFound for an element it advertises; dropping container context.",
+                    "UITabBar has an unexpected shape (buttons=%{public}d, items=%{public}d); dropping tab-bar context for element.",
+                    log: parserLog,
+                    type: .error,
+                    tabBarButtons.count,
+                    tabBarItems.count
+                )
+                return nil
+            }
+
+            let tabIndex = index % tabBarItems.count
+
+            return .tabBarItem(
+                index: tabIndex + 1,
+                count: tabBarItems.count,
+                item: tabBarItems[tabIndex]
+            )
+        }
+
+        // A view that is not a `UITabBar` but carries the `.tabBar` trait treats every element in its
+        // subtree as a tab. The index/count come from the element's ordered position among its
+        // tab-bar-trait siblings in the sorted traversal.
+        if let parentView = parentObject as? UIView,
+           parentView.accessibilityTraits.contains(.tabBar),
+           element is UIView
+        {
+            guard let tabTraitPosition = tabTraitPosition else {
+                os_log(
+                    "Tab-bar-trait view does not contain the element being parsed; dropping tab context.",
                     log: parserLog,
                     type: .error
                 )
                 return nil
             }
+            return .tab(index: tabTraitPosition.index, count: tabTraitPosition.count)
+        }
 
-            if container is UISegmentedControl {
-                return .series(
-                    index: elementIndex + 1,
-                    count: elementCount
-                )
+        // Data tables derive per-cell context from the same live-table facts the node payload stores.
+        if let dataTable = parentObject as? UIAccessibilityContainerDataTable,
+           parentObject.accessibilityContainerType == .dataTable
+        {
+            return dataTableCellContext(for: element, in: dataTable)
+        }
+
+        // Accessibility containers (segmented controls, lists, landmarks) vend their children through
+        // the container API. The child's index/count were captured at enumeration time — i.e. its
+        // ordered graph position — so no live re-query is needed.
+        let elementIndex = parent.capturedIndex ?? parentObject.index(ofAccessibilityElement: element)
+        let elementCount = parent.capturedCount ?? parentObject.accessibilityElementCount()
+
+        // The container may not actually contain the element if its accessibility tree is in an
+        // inconsistent state. Drop context for this element rather than crashing.
+        guard elementIndex != NSNotFound,
+              elementIndex >= 0,
+              elementCount > 0,
+              elementIndex < elementCount
+        else {
+            os_log(
+                "Accessibility container reported NSNotFound for an element it advertises; dropping container context.",
+                log: parserLog,
+                type: .error
+            )
+            return nil
+        }
+
+        if parentObject is UISegmentedControl {
+            return .series(index: elementIndex + 1, count: elementCount)
+        }
+
+        if parentObject.accessibilityTraits.contains(.tabBar) {
+            return .tab(index: elementIndex + 1, count: elementCount)
+        }
+
+        if parentObject.accessibilityContainerType == .list {
+            if elementIndex == 0 {
+                return .listStart
+            } else if elementIndex == elementCount - 1 {
+                return .listEnd
             }
+        }
 
-            if container.accessibilityTraits.contains(.tabBar) {
-                return .tab(
-                    index: elementIndex + 1,
-                    count: elementCount
-                )
-            }
-
-            if container.accessibilityContainerType == .list {
-                if elementIndex == 0 {
-                    return .listStart
-                } else if elementIndex == elementCount - 1 {
-                    return .listEnd
-                }
-            }
-
-            if container.accessibilityContainerType == .landmark {
-                if elementIndex == 0 {
-                    return .landmarkStart
-                } else if elementIndex == elementCount - 1 {
-                    return .landmarkEnd
-                }
-            }
-
-        case let .dataTable(dataTable):
-            if let cell = element as? UIAccessibilityContainerDataTableCell {
-                let rowRange = cell.accessibilityRowRange()
-                let row = rowRange.location
-
-                let columnRange = cell.accessibilityColumnRange()
-                let column = columnRange.location
-
-                // TODO: Seems like it uses the actual position of the cell to figure out the first element, rather than
-                // finding a cell with an earlier index. Specifically, this affects the case where a cell has a column
-                // of `NSNotFound`, but may also apply to other situations.
-                let isFirstInRow = column != NSNotFound
-                    && row != NSNotFound
-                    && !(0 ..< columnRange.location).contains {
-                        dataTable.accessibilityDataTableCellElement(forRow: rowRange.location, column: $0) != nil
-                    }
-
-                let rowHeaders: [NSObject]
-                if isFirstInRow, let allHeaders = dataTable.accessibilityHeaderElements?(forRow: row) {
-                    rowHeaders = allHeaders.filter { header in
-                        true
-                            // The cell is not read as a header for itself.
-                            && header !== cell
-                            // The header is not read if it is not a cell in the table.
-                            && dataTable.accessibilityDataTableCellElement(forRow: header.accessibilityRowRange().location, column: header.accessibilityColumnRange().location) === header
-                    }.compactMap { $0 as? NSObject }
-
-                } else {
-                    rowHeaders = []
-                }
-
-                let columnHeaders: [NSObject]
-                if let allHeaders = dataTable.accessibilityHeaderElements?(forColumn: column) {
-                    columnHeaders = allHeaders.filter { header in
-                        let headerRow = header.accessibilityRowRange().location
-                        let headerColumn = header.accessibilityColumnRange().location
-
-                        // The is header not read as a header for itself.
-                        if header === cell {
-                            return false
-                        }
-
-                        // The header is not read if it is immediately preceding the cell if the cell is the first in
-                        // its row.
-                        if row != NSNotFound, headerRow == row - 1, headerColumn == column, isFirstInRow {
-                            return false
-                        }
-
-                        return true
-                    }.compactMap { $0 as? NSObject }
-
-                } else {
-                    columnHeaders = []
-                }
-
-                return .dataTableCell(
-                    row: row,
-                    column: column,
-                    width: columnRange.length,
-                    height: rowRange.length,
-                    isFirstInRow: isFirstInRow,
-                    rowHeaders: rowHeaders,
-                    columnHeaders: columnHeaders
-                )
+        if parentObject.accessibilityContainerType == .landmark {
+            if elementIndex == 0 {
+                return .landmarkStart
+            } else if elementIndex == elementCount - 1 {
+                return .landmarkEnd
             }
         }
 
         return nil
+    }
+
+    /// Derives the `.dataTableCell` context for a cell from the live data table, using the same
+    /// filtering rules as the stored node payload (see `dataTableCells(for:orderedSources:)`).
+    private func dataTableCellContext(
+        for element: NSObject,
+        in dataTable: UIAccessibilityContainerDataTable
+    ) -> Context? {
+        guard let cell = element as? UIAccessibilityContainerDataTableCell else {
+            return nil
+        }
+
+        let rowRange = cell.accessibilityRowRange()
+        let row = rowRange.location
+
+        let columnRange = cell.accessibilityColumnRange()
+        let column = columnRange.location
+
+        // TODO: Seems like it uses the actual position of the cell to figure out the first element, rather than
+        // finding a cell with an earlier index. Specifically, this affects the case where a cell has a column
+        // of `NSNotFound`, but may also apply to other situations.
+        let isFirstInRow = column != NSNotFound
+            && row != NSNotFound
+            && !(0 ..< columnRange.location).contains {
+                dataTable.accessibilityDataTableCellElement(forRow: rowRange.location, column: $0) != nil
+            }
+
+        let rowHeaders: [NSObject]
+        if isFirstInRow, let allHeaders = dataTable.accessibilityHeaderElements?(forRow: row) {
+            rowHeaders = allHeaders.filter { header in
+                true
+                    // The cell is not read as a header for itself.
+                    && header !== cell
+                    // The header is not read if it is not a cell in the table.
+                    && dataTable.accessibilityDataTableCellElement(forRow: header.accessibilityRowRange().location, column: header.accessibilityColumnRange().location) === header
+            }.compactMap { $0 as? NSObject }
+
+        } else {
+            rowHeaders = []
+        }
+
+        let columnHeaders: [NSObject]
+        if let allHeaders = dataTable.accessibilityHeaderElements?(forColumn: column) {
+            columnHeaders = allHeaders.filter { header in
+                let headerRow = header.accessibilityRowRange().location
+                let headerColumn = header.accessibilityColumnRange().location
+
+                // The header is not read as a header for itself.
+                if header === cell {
+                    return false
+                }
+
+                // The header is not read if it is immediately preceding the cell if the cell is the first in
+                // its row.
+                if row != NSNotFound, headerRow == row - 1, headerColumn == column, isFirstInRow {
+                    return false
+                }
+
+                return true
+            }.compactMap { $0 as? NSObject }
+
+        } else {
+            columnHeaders = []
+        }
+
+        return .dataTableCell(
+            row: row,
+            column: column,
+            width: columnRange.length,
+            height: rowRange.length,
+            isFirstInRow: isFirstInRow,
+            rowHeaders: rowHeaders,
+            columnHeaders: columnHeaders
+        )
     }
 
     // MARK: - Private Hierarchy Methods
@@ -634,7 +652,7 @@ public final class AccessibilityHierarchyParser {
     /// the minimum sort key among its children.
     private func foldNodes<Node>(
         _ nodes: [AccessibilityNode],
-        sortedElements: [(object: NSObject, contextProvider: ContextProvider?)],
+        sortedElements: [(object: NSObject, contextParent: ContextParent?)],
         elements: [AccessibilityElement],
         in root: UIView,
         makeElement: (AccessibilityElement, _ traversalIndex: Int, _ source: NSObject) -> Node,
@@ -991,7 +1009,7 @@ private struct ContainerInfo {
 
 private enum AccessibilityNode {
     /// Represents a single accessibility element.
-    case element(NSObject, contextProvider: AccessibilityHierarchyParser.ContextProvider?)
+    case element(NSObject, contextParent: AccessibilityHierarchyParser.ContextParent?)
 
     /// Represents a group of accessibility elements (or nested groups) that should be iterated through together,
     /// without interspersing other elements.
@@ -1013,17 +1031,13 @@ private extension NSObject {
     /// Note that the order the nodes are returned in does not reflect the order that VoiceOver will iterate through
     /// them.
     func recursiveAccessibilityHierarchy(
-        contextProvider: AccessibilityHierarchyParser.ContextProvider? = nil,
+        contextParent: AccessibilityHierarchyParser.ContextParent? = nil,
         isRoot: Bool = false,
         options: ParserOptions = .default
     ) -> [AccessibilityNode] {
         guard !accessibilityElementsHidden else {
             return []
         }
-
-        let explicitAccessibilityElements = resolvedAccessibilityElements(
-            allowContainerFallback: shouldUseAccessibilityContainerElements
-        )
 
         if let `self` = self as? UIView {
             if self.isHidden || self.alpha <= 0 {
@@ -1059,22 +1073,27 @@ private extension NSObject {
                     }
                 }
             }
-            recursiveAccessibilityHierarchy.append(.element(self, contextProvider: contextProvider))
+            recursiveAccessibilityHierarchy.append(.element(self, contextParent: contextParent))
 
         } else if let accessibilityElements = resolvedAccessibilityElements(
             allowContainerFallback: shouldUseAccessibilityContainerElements
         ) {
             var accessibilityHierarchyOfElements: [AccessibilityNode] = []
             for (index, element) in accessibilityElements.enumerated() {
-                let childContextProvider = contextProvider ?? (
-                    providesContext ? providedContextAsContainer(
-                        elementIndex: index,
-                        elementCount: accessibilityElements.count
-                    ) : nil
+                // The enumeration index/count are the child's ordered graph position, captured here so
+                // context can be derived without re-querying the live container later.
+                let childContextParent = contextParent ?? (
+                    providesContext
+                        ? AccessibilityHierarchyParser.ContextParent(
+                            object: self,
+                            capturedIndex: index,
+                            capturedCount: accessibilityElements.count
+                        )
+                        : nil
                 )
                 accessibilityHierarchyOfElements.append(
                     contentsOf: element.recursiveAccessibilityHierarchy(
-                        contextProvider: childContextProvider,
+                        contextParent: childContextParent,
                         isRoot: false,
                         options: options
                     )
@@ -1085,7 +1104,7 @@ private extension NSObject {
             recursiveAccessibilityHierarchy.append(.group(
                 accessibilityHierarchyOfElements,
                 explicitlyOrdered: true,
-                frameOverrideProvider: overridesElementFrame(with: contextProvider) ? self : nil,
+                frameOverrideProvider: overridesElementFrame(with: contextParent) ? self : nil,
                 container: container
             ))
 
@@ -1106,7 +1125,7 @@ private extension NSObject {
             for subview in subviewsToParse {
                 accessibilityHierarchyOfSubviews.append(
                     contentsOf: subview.recursiveAccessibilityHierarchy(
-                        contextProvider: contextProvider ?? (providesContext ? providedContextAsSuperview() : nil),
+                        contextParent: contextParent ?? superviewContextParent(),
                         isRoot: false,
                         options: options
                     )
@@ -1239,9 +1258,6 @@ private extension NSObject {
     }
 
     /// Whether or not the object provides context to elements beneath it in the hierarchy.
-    ///
-    /// Some elements can provide context in multiple roles, which can be differentiated using the
-    /// `providedContextAsSuperview()` and `providedContextAsContainer()` methods.
     private var providesContext: Bool {
         return self is UISegmentedControl
             || self is UITabBar
@@ -1251,51 +1267,34 @@ private extension NSObject {
             || (self is UIAccessibilityContainerDataTable && accessibilityContainerType == .dataTable)
     }
 
-    /// The form of context provider the object acts as for elements beneath it in the hierarchy when the elements
-    /// beneath it are part of the view hierarchy and the object is not an accessibility container.
-    private func providedContextAsSuperview() -> AccessibilityHierarchyParser.ContextProvider? {
-        if accessibilityContainerType == .dataTable, let self = self as? UIAccessibilityContainerDataTable {
-            return .dataTable(self)
+    /// The context parent this object lends to elements beneath it in the *view* hierarchy (i.e. when
+    /// it vends its children as subviews rather than through the accessibility-container API).
+    ///
+    /// Only `UITabBar`s, `.tabBar`-trait views, and data tables derive context this way. Other
+    /// context providers (segmented controls, lists, landmarks) vend their children through
+    /// `accessibilityElements`/`accessibilityElement(at:)` and are captured on the container path with
+    /// an explicit index/count instead. Returning `nil` here for those preserves today's behavior of
+    /// not deriving list/landmark context from subview position.
+    private func superviewContextParent() -> AccessibilityHierarchyParser.ContextParent? {
+        if self is UITabBar
+            || accessibilityTraits.contains(.tabBar)
+            || (self is UIAccessibilityContainerDataTable && accessibilityContainerType == .dataTable)
+        {
+            return AccessibilityHierarchyParser.ContextParent(object: self)
         }
-
-        guard let view = self as? UIView else {
-            os_log(
-                "Non-UIView object %{public}@ reports providesContext=true but cannot supply superview context; skipping.",
-                log: parserLog,
-                type: .error,
-                String(describing: type(of: self))
-            )
-            return nil
-        }
-
-        return .superview(view)
+        return nil
     }
 
-    /// The form of context provider the object acts as for elements beneath it in the hierarchy when the object is
-    /// being used as an accessibility container.
-    private func providedContextAsContainer(
-        elementIndex: Int? = nil,
-        elementCount: Int? = nil
-    ) -> AccessibilityHierarchyParser.ContextProvider {
-        if accessibilityContainerType == .dataTable, let self = self as? UIAccessibilityContainerDataTable {
-            return .dataTable(self)
-        }
-
-        return .accessibilityContainer(self, elementIndex: elementIndex, elementCount: elementCount)
-    }
-
-    private func overridesElementFrame(with contextProvider: AccessibilityHierarchyParser.ContextProvider?) -> Bool {
-        guard let contextProvider = contextProvider else {
+    /// Whether elements beneath `contextParent` should use their parent's frame to determine group
+    /// ordering. This is a sort concern: `.tabBar`-trait containers anchor their tabs by the
+    /// container's own frame rather than the first-selected child.
+    private func overridesElementFrame(with contextParent: AccessibilityHierarchyParser.ContextParent?) -> Bool {
+        guard let parent = contextParent?.object as? UIView else {
             return false
         }
-
-        switch contextProvider {
-        case let .superview(view):
-            return view.accessibilityTraits.contains(.tabBar)
-
-        case .accessibilityContainer, .dataTable:
-            return false
-        }
+        // A `.tabBar`-trait container anchors its tabs by its own frame (mirrors the old `.superview`
+        // provider behavior). `UITabBar` lacks the `.tabBar` trait, so it is naturally excluded.
+        return parent.accessibilityTraits.contains(.tabBar)
     }
 }
 
