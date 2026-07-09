@@ -1,9 +1,9 @@
 import AccessibilitySnapshotCore
 import AccessibilitySnapshotParser
 import AccessibilitySnapshotParser_ObjC
+import AccessibilitySnapshotPreviews
 import iOSSnapshotTestCase
 import SwiftUI
-import AccessibilitySnapshotPreviews
 import XCTest
 
 public extension FBSnapshotTestCase {

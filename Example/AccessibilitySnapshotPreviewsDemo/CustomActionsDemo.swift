@@ -1,5 +1,5 @@
-import SwiftUI
 import AccessibilitySnapshotPreviews
+import SwiftUI
 
 struct CustomActionsDemo: View {
     @State private var isFavorite = false

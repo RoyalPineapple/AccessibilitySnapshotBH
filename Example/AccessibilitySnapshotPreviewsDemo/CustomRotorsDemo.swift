@@ -1,5 +1,5 @@
-import SwiftUI
 import AccessibilitySnapshotPreviews
+import SwiftUI
 
 /// Demonstrates SwiftUI accessibility rotors using the namespace pattern.
 ///

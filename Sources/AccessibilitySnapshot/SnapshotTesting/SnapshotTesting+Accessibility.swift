@@ -1,8 +1,8 @@
 import AccessibilitySnapshotCore
 import AccessibilitySnapshotParser
 import AccessibilitySnapshotParser_ObjC
-import SnapshotTesting
 import AccessibilitySnapshotPreviews
+import SnapshotTesting
 import UIKit
 
 public extension Snapshotting where Value == UIView, Format == UIImage {

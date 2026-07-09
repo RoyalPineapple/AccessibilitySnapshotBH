@@ -213,4 +213,3 @@ enum BadgePlacement {
         return nil
     }
 }
-
