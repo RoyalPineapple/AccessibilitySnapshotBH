@@ -13,6 +13,22 @@ public struct ParsedAccessibilityData {
 
     /// The bounds size of the contained view.
     public let containedViewBounds: CGSize
+
+    /// Per-scroll-container summaries of off-screen elements trimmed during delivery. Empty unless
+    /// the configuration's `deliveryOptions` trimmed something (i.e. `.untrimmed` always yields `[]`).
+    public let containerSummaries: [ScrollContainerSummary]
+
+    public init(
+        image: UIImage,
+        markers: [AccessibilityMarker],
+        containedViewBounds: CGSize,
+        containerSummaries: [ScrollContainerSummary] = []
+    ) {
+        self.image = image
+        self.markers = markers
+        self.containedViewBounds = containedViewBounds
+        self.containerSummaries = containerSummaries
+    }
 }
 
 // MARK: - Base View
@@ -97,15 +113,16 @@ open class AccessibilitySnapshotBaseView: SnapshotAndLegendView {
         containedView.layoutIfNeeded()
 
         let parser = AccessibilityHierarchyParser()
-        let markers = parser.parseAccessibilityHierarchy(
+        let delivered = parser.parseAccessibilityHierarchy(
             in: containedView,
             rotorResultLimit: snapshotConfiguration.rotors.resultLimit
-        ).flattenToElements()
+        ).deliver(options: snapshotConfiguration.deliveryOptions)
 
         let parsedData = ParsedAccessibilityData(
             image: image,
-            markers: markers,
-            containedViewBounds: containedView.bounds.size
+            markers: delivered.elements,
+            containedViewBounds: containedView.bounds.size,
+            containerSummaries: delivered.scrollContainerSummaries
         )
 
         render(data: parsedData)

@@ -64,6 +64,12 @@ public struct AccessibilitySnapshotConfiguration {
     /// Whether to show unspoken accessibility traits (keyboardKey, playsSound, etc.) in the legend. Defaults to `true`.
     public let showsUnspokenTraits: Bool
 
+    /// Controls whether off-screen elements are trimmed from the rendered snapshot. The parser always
+    /// captures the full tree with each element flagged on-/off-screen; this option decides whether
+    /// the off-screen ones are dropped at delivery. Defaults to `.trimmed`, matching VoiceOver's
+    /// visible-frame filtering (and this fork's historical output).
+    public let deliveryOptions: DeliveryOptions
+
     // MARK: - Initialization
 
     /// Creates a new accessibility snapshot configuration.
@@ -77,6 +83,7 @@ public struct AccessibilitySnapshotConfiguration {
     ///   - includesCustomRotors: When to show accessibility custom rotors and their contents. Defaults to `.whenOverridden`.
     ///   - rotorResultLimit: Maximum number of rotor results to collect in each direction. Defaults to `10`.
     ///   - showsUnspokenTraits: Whether to show unspoken traits in the legend. Defaults to `true`.
+    ///   - deliveryOptions: Whether off-screen elements are trimmed from the snapshot. Defaults to `.trimmed`.
     public init(
         viewRenderingMode: ViewRenderingMode,
         colorRenderingMode: ColorRenderingMode = .monochrome,
@@ -85,7 +92,8 @@ public struct AccessibilitySnapshotConfiguration {
         includesInputLabels: AccessibilityContentDisplayMode = .whenOverridden,
         includesCustomRotors: AccessibilityContentDisplayMode = .whenOverridden,
         rotorResultLimit: Int = AccessibilityMarker.defaultRotorResultLimit,
-        showsUnspokenTraits: Bool = true
+        showsUnspokenTraits: Bool = true,
+        deliveryOptions: DeliveryOptions = .trimmed
     ) {
         rendering = Rendering(renderMode: viewRenderingMode, colorMode: colorRenderingMode)
         rotors = Rotors(displayMode: includesCustomRotors, resultLimit: rotorResultLimit)
@@ -93,6 +101,7 @@ public struct AccessibilitySnapshotConfiguration {
         activationPointDisplayMode = activationPointDisplay
         inputLabelDisplayMode = includesInputLabels
         self.showsUnspokenTraits = showsUnspokenTraits
+        self.deliveryOptions = deliveryOptions
     }
 }
 
