@@ -223,12 +223,11 @@ final class AccessibilityHierarchyParserTests: XCTestCase {
         }
     }
 
-    func testSemanticGroupWithoutLabelIsFlattened() {
+    func testSemanticGroupWithoutLabelIsPreserved() {
         let rootView = UIView(frame: .init(x: 0, y: 0, width: 100, height: 100))
 
         let container = UIView(frame: .init(x: 0, y: 0, width: 100, height: 50))
         container.accessibilityContainerType = .semanticGroup
-        // No label, value, or identifier
         rootView.addSubview(container)
 
         let element = UIView(frame: .init(x: 10, y: 10, width: 30, height: 30))
@@ -240,15 +239,40 @@ final class AccessibilityHierarchyParserTests: XCTestCase {
         let parser = AccessibilityHierarchyParser()
         let hierarchy = parser.parseAccessibilityHierarchy(in: rootView)
 
-        // Should have one element at root level (container flattened)
+        // A declared container role is preserved even without semantic properties.
         XCTAssertEqual(hierarchy.count, 1)
 
-        // Verify it's an element, not a container
-        if case let .element(elementInfo, _) = hierarchy.first {
-            XCTAssertEqual(elementInfo.description, "Element")
+        if case let .container(containerInfo, children) = hierarchy.first {
+            XCTAssertEqual(containerInfo.type, .semanticGroup(label: nil, value: nil))
+            XCTAssertEqual(children.count, 1)
+            if case let .element(elementInfo, _) = children.first {
+                XCTAssertEqual(elementInfo.description, "Element")
+            } else {
+                XCTFail("Expected element child")
+            }
         } else {
-            XCTFail("Expected element at root level (container should be flattened)")
+            XCTFail("Expected semantic group container at root level")
         }
+    }
+
+    func testViewWithoutContainerFactsIsFlattened() {
+        let rootView = UIView(frame: .init(x: 0, y: 0, width: 100, height: 100))
+
+        let wrapper = UIView(frame: rootView.bounds)
+        rootView.addSubview(wrapper)
+
+        let element = UIView(frame: CGRect(x: 10, y: 10, width: 30, height: 30))
+        element.isAccessibilityElement = true
+        element.accessibilityLabel = "Element"
+        element.accessibilityFrame = element.frame
+        wrapper.addSubview(element)
+
+        let hierarchy = AccessibilityHierarchyParser().parseAccessibilityHierarchy(in: rootView)
+
+        guard case let .element(elementInfo, _) = hierarchy.first else {
+            return XCTFail("Expected a neutral wrapper without facts to be transparent")
+        }
+        XCTAssertEqual(elementInfo.description, "Element")
     }
 
     func testListContainerIsAlwaysPreserved() {
@@ -356,9 +380,7 @@ final class AccessibilityHierarchyParserTests: XCTestCase {
 
         let hierarchy = AccessibilityHierarchyParser().parseAccessibilityHierarchy(in: rootView)
 
-        let matchingContainers = hierarchy.flattenToContainers().filter { container in
-            container.identifier == "empty-root"
-        }
+        let matchingContainers = hierarchy.flattenToContainers().filter { $0.identifier == "empty-root" }
         XCTAssertTrue(matchingContainers.isEmpty)
     }
 

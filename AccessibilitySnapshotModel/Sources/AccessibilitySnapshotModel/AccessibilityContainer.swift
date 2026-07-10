@@ -6,6 +6,7 @@ public struct AccessibilityContainer: Hashable, Codable, Sendable {
         case landmark
         case dataTable(rowCount: Int, columnCount: Int, cells: [DataTableCellInfo?])
         case tabBar
+        case scrollable(contentSize: AccessibilitySize)
     }
 
     /// Per-cell grid facts captured once at parse time and stored on the `.dataTable` container so
@@ -80,6 +81,7 @@ public struct AccessibilityContainer: Hashable, Codable, Sendable {
 // defaults `cells` to `[]` when the key is absent.
 extension AccessibilityContainer.ContainerType {
     private enum CodingKeys: String, CodingKey {
+        case none
         case semanticGroup
         case list
         case landmark
@@ -91,7 +93,6 @@ extension AccessibilityContainer.ContainerType {
     private enum SemanticGroupKeys: String, CodingKey {
         case label
         case value
-        case identifier
     }
 
     private enum DataTableKeys: String, CodingKey {
@@ -114,12 +115,13 @@ extension AccessibilityContainer.ContainerType {
             )
         }
         switch key {
+        case .none:
+            self = .none
         case .semanticGroup:
             let nested = try container.nestedContainer(keyedBy: SemanticGroupKeys.self, forKey: .semanticGroup)
             self = try .semanticGroup(
                 label: nested.decodeIfPresent(String.self, forKey: .label),
-                value: nested.decodeIfPresent(String.self, forKey: .value),
-                identifier: nested.decodeIfPresent(String.self, forKey: .identifier)
+                value: nested.decodeIfPresent(String.self, forKey: .value)
             )
         case .list:
             self = .list
@@ -143,11 +145,12 @@ extension AccessibilityContainer.ContainerType {
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         switch self {
-        case let .semanticGroup(label, value, identifier):
+        case .none:
+            try container.encode(EmptyPayload(), forKey: .none)
+        case let .semanticGroup(label, value):
             var nested = container.nestedContainer(keyedBy: SemanticGroupKeys.self, forKey: .semanticGroup)
             try nested.encodeIfPresent(label, forKey: .label)
             try nested.encodeIfPresent(value, forKey: .value)
-            try nested.encodeIfPresent(identifier, forKey: .identifier)
         case .list:
             _ = container.nestedContainer(keyedBy: SemanticGroupKeys.self, forKey: .list)
         case .landmark:

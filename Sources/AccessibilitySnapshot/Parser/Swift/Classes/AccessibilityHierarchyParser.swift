@@ -134,12 +134,12 @@ public final class AccessibilityHierarchyParser {
     /// This method uses the same element parsing logic as `parseAccessibilityElements` but additionally
     /// tracks containers (semanticGroup, list, landmark, dataTable, tabBar) and nests elements within them.
     ///
-    /// Container inclusion rules based on VoiceOver behavior:
-    /// - `.semanticGroup` with label/value/identifier: INCLUDE (label is announced)
-    /// - `.list`, `.landmark`, `.dataTable`: INCLUDE (affects rotor navigation)
-    /// - Views with `.tabBar` trait: INCLUDE (affects tab navigation)
-    /// - `.semanticGroup` without properties: EXCLUDE (no announcement)
-    /// - `.none` containers: EXCLUDE (no special behavior)
+    /// Container inclusion rules based on captured facts:
+    /// - A container must have at least one accessible descendant to form a navigable boundary.
+    /// - Any non-`.none` container role is included when it has descendants.
+    /// - A `.none` container is included when it has descendants and an identifier, scrollable
+    ///   content, a modal boundary, custom actions, or a tab-bar trait.
+    /// - A `.none` container without any captured facts is transparent.
     ///
     /// Each element node includes a `traversalIndex` indicating its position in VoiceOver's navigation order.
     /// Use `flattenToElements()` on the result to get the same output as `parseAccessibilityElements`.
@@ -1014,9 +1014,6 @@ private enum AccessibilityNode {
     case group([AccessibilityNode], explicitlyOrdered: Bool, frameOverrideProvider: NSObject?, container: ContainerInfo?)
 
     /// Whether this node contains at least one parsed accessibility element below it.
-    ///
-    /// Groups can be structurally present without exposing any accessible descendants, so
-    /// container promotion must use this fact rather than the presence of a child group alone.
     var containsAccessibleElement: Bool {
         switch self {
         case .element:
@@ -1239,19 +1236,14 @@ private extension NSObject {
         }()
 
         let scrollableContentSize = scrollableContentSize(for: view)
-        let isSemanticGroup = containerType == .semanticGroup
-            && (label != nil || value != nil || identifier != nil)
-        let isIdentifierBearingView = identifier?.isEmpty == false && hasAccessibleDescendants
         let customActions = view.accessibilityCustomActions?.map { AccessibilityElement.CustomAction(name: $0.name) } ?? []
-        let shouldEmitContainer = traits.contains(.tabBar)
-            || containerType == .list
-            || containerType == .landmark
-            || containerType == .dataTable
-            || isSemanticGroup
-            || isIdentifierBearingView
+        let hasContainerRole = containerType != .none
+        let hasContainerFacts = identifier?.isEmpty == false
             || scrollableContentSize != nil
             || isModalBoundary
             || !customActions.isEmpty
+            || traits.contains(.tabBar)
+        let shouldEmitContainer = hasAccessibleDescendants && (hasContainerRole || hasContainerFacts)
 
         guard shouldEmitContainer else {
             return nil
