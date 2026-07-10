@@ -314,6 +314,72 @@ final class AccessibilityHierarchyParserTests: XCTestCase {
         }
     }
 
+    func testIdentifierOnlyViewWithAccessibleDescendantsIsPreservedAsContainer() {
+        let rootView = UIView(frame: .init(x: 0, y: 0, width: 100, height: 100))
+
+        let container = UIView(frame: rootView.bounds)
+        container.accessibilityIdentifier = "screen-root"
+        rootView.addSubview(container)
+
+        let element = UIView(frame: CGRect(x: 10, y: 10, width: 30, height: 30))
+        element.isAccessibilityElement = true
+        element.accessibilityLabel = "Content"
+        element.accessibilityFrame = element.frame
+        container.addSubview(element)
+
+        let hierarchy = AccessibilityHierarchyParser().parseAccessibilityHierarchy(in: rootView)
+
+        guard case let .container(containerInfo, children) = hierarchy.first else {
+            return XCTFail("Expected identifier-bearing view to be emitted as a container")
+        }
+        guard case .none = containerInfo.type else {
+            return XCTFail("Expected identifier-bearing view to use neutral container facts")
+        }
+
+        XCTAssertEqual(containerInfo.identifier, "screen-root")
+        XCTAssertNil(containerInfo.scrollableContentSize)
+        XCTAssertFalse(containerInfo.isModalBoundary)
+        XCTAssertTrue(containerInfo.customActions.isEmpty)
+        XCTAssertEqual(children.count, 1)
+        guard case let .element(child, _) = children.first else {
+            return XCTFail("Expected the accessible descendant to remain a child element")
+        }
+        XCTAssertEqual(child.label, "Content")
+    }
+
+    func testIdentifierOnlyViewWithoutAccessibleDescendantsIsNotEmittedAsContainer() {
+        let rootView = UIView(frame: .init(x: 0, y: 0, width: 100, height: 100))
+
+        let view = UIView(frame: rootView.bounds)
+        view.accessibilityIdentifier = "empty-root"
+        rootView.addSubview(view)
+
+        let hierarchy = AccessibilityHierarchyParser().parseAccessibilityHierarchy(in: rootView)
+
+        let matchingContainers = hierarchy.flattenToContainers().filter { container in
+            container.identifier == "empty-root"
+        }
+        XCTAssertTrue(matchingContainers.isEmpty)
+    }
+
+    func testEmptyIdentifierViewIsNotEmittedAsContainer() {
+        let rootView = UIView(frame: .init(x: 0, y: 0, width: 100, height: 100))
+
+        let container = UIView(frame: rootView.bounds)
+        container.accessibilityIdentifier = ""
+        rootView.addSubview(container)
+
+        let element = UIView(frame: CGRect(x: 10, y: 10, width: 30, height: 30))
+        element.isAccessibilityElement = true
+        element.accessibilityLabel = "Content"
+        element.accessibilityFrame = element.frame
+        container.addSubview(element)
+
+        let hierarchy = AccessibilityHierarchyParser().parseAccessibilityHierarchy(in: rootView)
+
+        XCTAssertFalse(hierarchy.flattenToContainers().contains { $0.identifier == "" })
+    }
+
     func testNestedContainersPreserveHierarchy() {
         // Use NestedContainersTestView which mirrors ContainerHierarchyViewController's NestedContainersDemoView
         let nestedView = NestedContainersTestView(frame: CGRect(x: 0, y: 0, width: 200, height: 100))

@@ -1012,6 +1012,19 @@ private enum AccessibilityNode {
     /// be selected.
     /// - `container`: Container info if this group represents a meaningful accessibility container.
     case group([AccessibilityNode], explicitlyOrdered: Bool, frameOverrideProvider: NSObject?, container: ContainerInfo?)
+
+    /// Whether this node contains at least one parsed accessibility element below it.
+    ///
+    /// Groups can be structurally present without exposing any accessible descendants, so
+    /// container promotion must use this fact rather than the presence of a child group alone.
+    var containsAccessibleElement: Bool {
+        switch self {
+        case .element:
+            return true
+        case let .group(children, _, _, _):
+            return children.contains { $0.containsAccessibleElement }
+        }
+    }
 }
 
 // MARK: -
@@ -1108,7 +1121,12 @@ private extension NSObject {
                     )
                 )
             }
-            let container = (self as? UIView).flatMap { containerInfo(for: $0) }
+            let container = (self as? UIView).flatMap {
+                containerInfo(
+                    for: $0,
+                    hasAccessibleDescendants: accessibilityHierarchyOfElements.contains { $0.containsAccessibleElement }
+                )
+            }
 
             recursiveAccessibilityHierarchy.append(.group(
                 accessibilityHierarchyOfElements,
@@ -1141,7 +1159,10 @@ private extension NSObject {
                 )
             }
 
-            let container = containerInfo(for: self)
+            let container = containerInfo(
+                for: self,
+                hasAccessibleDescendants: accessibilityHierarchyOfSubviews.contains { $0.containsAccessibleElement }
+            )
 
             if shouldGroupAccessibilityChildren || container != nil {
                 recursiveAccessibilityHierarchy.append(
@@ -1200,7 +1221,7 @@ private extension NSObject {
         isAccessibilityElement || accessibilityElements != nil
     }
 
-    private func containerInfo(for view: UIView) -> ContainerInfo? {
+    private func containerInfo(for view: UIView, hasAccessibleDescendants: Bool) -> ContainerInfo? {
         let containerType = view.accessibilityContainerType
         let traits = view.accessibilityTraits
         let label = view.accessibilityLabel
@@ -1220,13 +1241,14 @@ private extension NSObject {
         let scrollableContentSize = scrollableContentSize(for: view)
         let isSemanticGroup = containerType == .semanticGroup
             && (label != nil || value != nil || identifier != nil)
+        let isIdentifierBearingView = identifier?.isEmpty == false && hasAccessibleDescendants
         let customActions = view.accessibilityCustomActions?.map { AccessibilityElement.CustomAction(name: $0.name) } ?? []
         let shouldEmitContainer = traits.contains(.tabBar)
             || containerType == .list
             || containerType == .landmark
             || containerType == .dataTable
             || isSemanticGroup
-            || identifier != nil
+            || isIdentifierBearingView
             || scrollableContentSize != nil
             || isModalBoundary
             || !customActions.isEmpty
