@@ -126,12 +126,14 @@ public struct AccessibilitySnapshotView<Content: View>: View {
             )
 
             let parser = AccessibilityHierarchyParser()
-            let delivered = parser.parseAccessibilityHierarchy(
+            let hierarchy = parser.parseAccessibilityHierarchy(
                 in: hostingController.view,
                 rotorResultLimit: configuration.rotors.resultLimit
-            ).deliver(options: configuration.deliveryOptions)
-            markers = delivered.elements
-            containerSummaries = delivered.scrollContainerSummaries
+            )
+            // (identical trim + summary policy as AccessibilitySnapshotBaseView)
+            let includesOffscreen = configuration.includesOffscreenElements
+            markers = (includesOffscreen ? hierarchy : hierarchy.onscreen()).flattenToElements()
+            containerSummaries = includesOffscreen ? [] : hierarchy.scrollContainerSummaries()
         } catch {
             parseError = error
         }

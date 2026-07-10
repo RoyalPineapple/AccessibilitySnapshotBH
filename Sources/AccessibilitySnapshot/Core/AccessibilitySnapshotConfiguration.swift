@@ -64,11 +64,11 @@ public struct AccessibilitySnapshotConfiguration {
     /// Whether to show unspoken accessibility traits (keyboardKey, playsSound, etc.) in the legend. Defaults to `true`.
     public let showsUnspokenTraits: Bool
 
-    /// Controls whether off-screen elements are trimmed from the rendered snapshot. The parser always
-    /// captures the full tree with each element flagged on-/off-screen; this option decides whether
-    /// the off-screen ones are dropped at delivery. Defaults to `.trimmed`, matching VoiceOver's
-    /// visible-frame filtering (and this fork's historical output).
-    public let deliveryOptions: DeliveryOptions
+    /// Controls whether off-screen elements are included in the rendered snapshot. The parser always
+    /// captures the full tree with each element flagged on-/off-screen; when `false`, the snapshot
+    /// renders only the on-screen hierarchy (`hierarchy.onscreen()`). Defaults to `false`, matching
+    /// VoiceOver's visible-frame filtering (and this fork's historical output).
+    public let includesOffscreenElements: Bool
 
     /// Whether to render an extra legend row per scroll container summarizing how many off-screen
     /// elements were trimmed above/below its viewport. Off by default; the default legend is
@@ -88,7 +88,7 @@ public struct AccessibilitySnapshotConfiguration {
     ///   - includesCustomRotors: When to show accessibility custom rotors and their contents. Defaults to `.whenOverridden`.
     ///   - rotorResultLimit: Maximum number of rotor results to collect in each direction. Defaults to `10`.
     ///   - showsUnspokenTraits: Whether to show unspoken traits in the legend. Defaults to `true`.
-    ///   - deliveryOptions: Whether off-screen elements are trimmed from the snapshot. Defaults to `.trimmed`.
+    ///   - includesOffscreenElements: Whether off-screen elements are included in the snapshot. Defaults to `false`.
     public init(
         viewRenderingMode: ViewRenderingMode,
         colorRenderingMode: ColorRenderingMode = .monochrome,
@@ -98,7 +98,7 @@ public struct AccessibilitySnapshotConfiguration {
         includesCustomRotors: AccessibilityContentDisplayMode = .whenOverridden,
         rotorResultLimit: Int = AccessibilityMarker.defaultRotorResultLimit,
         showsUnspokenTraits: Bool = true,
-        deliveryOptions: DeliveryOptions = .trimmed,
+        includesOffscreenElements: Bool = false,
         showsOffscreenElementCounts: Bool = false
     ) {
         rendering = Rendering(renderMode: viewRenderingMode, colorMode: colorRenderingMode)
@@ -107,7 +107,7 @@ public struct AccessibilitySnapshotConfiguration {
         activationPointDisplayMode = activationPointDisplay
         inputLabelDisplayMode = includesInputLabels
         self.showsUnspokenTraits = showsUnspokenTraits
-        self.deliveryOptions = deliveryOptions
+        self.includesOffscreenElements = includesOffscreenElements
         self.showsOffscreenElementCounts = showsOffscreenElementCounts
     }
 }

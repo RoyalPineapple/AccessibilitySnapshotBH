@@ -31,25 +31,59 @@ final class AccessibilityDeliveryTests: XCTestCase {
 
     // MARK: - Untrimmed equivalence
 
-    func testUntrimmedEqualsFlattenToElements() {
+    func testFullTreeFlattenIncludesOffscreen() {
         let hierarchy: [AccessibilityHierarchy] = [
             .element(element("A", visibility: .onscreen), traversalIndex: 0),
             .element(element("B", visibility: .offscreen), traversalIndex: 1),
         ]
-        XCTAssertEqual(hierarchy.deliver(options: .untrimmed).elements, hierarchy.flattenToElements())
-        XCTAssertTrue(hierarchy.deliver(options: .untrimmed).scrollContainerSummaries.isEmpty)
+        // The unfiltered tree flattens to every element; nothing is summarized.
+        XCTAssertEqual(hierarchy.flattenToElements().map { $0.label }, ["A", "B"])
     }
 
     // MARK: - Trimming
 
-    func testTrimmedDropsOffscreenElements() {
+    func testOnscreenDropsOffscreenElements() {
         let hierarchy: [AccessibilityHierarchy] = [
             .element(element("A", visibility: .onscreen), traversalIndex: 0),
             .element(element("B", visibility: .offscreen), traversalIndex: 1),
             .element(element("C", visibility: .onscreen), traversalIndex: 2),
         ]
-        let delivered = hierarchy.deliver(options: .trimmed)
-        XCTAssertEqual(delivered.elements.map(\.label), ["A", "C"])
+        XCTAssertEqual(hierarchy.onscreen().flattenToElements().map { $0.label }, ["A", "C"])
+    }
+
+    // MARK: - Empty-container pruning
+
+    func testOnscreenDropsContainerWhoseChildrenAllWentOffscreen() {
+        // A container with no surviving on-screen children is not an accessibility element and must
+        // not remain in the on-screen tree.
+        let group = AccessibilityHierarchy.container(
+            AccessibilityContainer(type: .list, frame: AccessibilityRect(x: 0, y: 0, width: 100, height: 100)),
+            children: [
+                .element(element("hidden1", visibility: .offscreen), traversalIndex: 0),
+                .element(element("hidden2", visibility: .offscreen), traversalIndex: 1),
+            ]
+        )
+        let hierarchy: [AccessibilityHierarchy] = [
+            .element(element("A", visibility: .onscreen), traversalIndex: 0),
+            group,
+        ]
+        let onscreen = hierarchy.onscreen()
+        // The emptied list container is gone entirely, leaving only the top-level on-screen element.
+        XCTAssertEqual(onscreen.count, 1)
+        XCTAssertEqual(onscreen.flattenToElements().map { $0.label }, ["A"])
+    }
+
+    func testOnscreenKeepsContainerWithAtLeastOneOnscreenChild() {
+        let group = AccessibilityHierarchy.container(
+            AccessibilityContainer(type: .list, frame: AccessibilityRect(x: 0, y: 0, width: 100, height: 100)),
+            children: [
+                .element(element("kept", visibility: .onscreen), traversalIndex: 0),
+                .element(element("dropped", visibility: .offscreen), traversalIndex: 1),
+            ]
+        )
+        let onscreen = [group].onscreen()
+        XCTAssertEqual(onscreen.count, 1)
+        XCTAssertEqual(onscreen.flattenToElements().map { $0.label }, ["kept"])
     }
 
     // MARK: - Framed classification (above / below the viewport)
@@ -61,7 +95,7 @@ final class AccessibilityDeliveryTests: XCTestCase {
             .element(element("visible", visibility: .onscreen, shape: .frame(AccessibilityRect(x: 0, y: 120, width: 100, height: 40))), traversalIndex: 1),
             .element(element("below", visibility: .offscreen, shape: .frame(AccessibilityRect(x: 0, y: 300, width: 100, height: 40))), traversalIndex: 2),
         ])]
-        let summary = hierarchy.deliver(options: .trimmed).scrollContainerSummaries.first
+        let summary = hierarchy.scrollContainerSummaries().first
         XCTAssertEqual(summary?.trimmedAbove, 1)
         XCTAssertEqual(summary?.trimmedBelow, 1)
         XCTAssertEqual(summary?.trimmedElsewhere, 0)
@@ -77,7 +111,7 @@ final class AccessibilityDeliveryTests: XCTestCase {
             .element(element("after1", visibility: .offscreen), traversalIndex: 2),
             .element(element("after2", visibility: .offscreen), traversalIndex: 3),
         ])]
-        let summary = hierarchy.deliver(options: .trimmed).scrollContainerSummaries.first
+        let summary = hierarchy.scrollContainerSummaries().first
         XCTAssertEqual(summary?.trimmedAbove, 1)
         XCTAssertEqual(summary?.trimmedBelow, 2)
     }
@@ -89,9 +123,8 @@ final class AccessibilityDeliveryTests: XCTestCase {
             .element(element("A", visibility: .onscreen), traversalIndex: 0),
             .element(element("B", visibility: .offscreen), traversalIndex: 1),
         ]
-        let delivered = hierarchy.deliver(options: .trimmed)
-        XCTAssertEqual(delivered.elements.map(\.label), ["A"])
-        XCTAssertTrue(delivered.scrollContainerSummaries.isEmpty)
+        XCTAssertEqual(hierarchy.onscreen().flattenToElements().map { $0.label }, ["A"])
+        XCTAssertTrue(hierarchy.scrollContainerSummaries().isEmpty)
     }
 
     // MARK: - Nested scrollables attribute to nearest
@@ -106,7 +139,7 @@ final class AccessibilityDeliveryTests: XCTestCase {
             .element(element("outer-off", visibility: .offscreen, shape: .frame(AccessibilityRect(x: 0, y: 900, width: 100, height: 40))), traversalIndex: 0),
             inner,
         ])]
-        let summaries = hierarchy.deliver(options: .trimmed).scrollContainerSummaries
+        let summaries = hierarchy.scrollContainerSummaries()
         XCTAssertEqual(summaries.count, 2)
         // The outer container's own tally must not absorb the inner container's trimmed child.
         let outer = summaries.first { $0.container.frame == outerViewport }

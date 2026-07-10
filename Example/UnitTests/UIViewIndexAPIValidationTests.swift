@@ -400,7 +400,7 @@ final class UIViewIndexAPIValidationTests: XCTestCase {
             elements.compactMap { $0.label }.filter { $0.hasPrefix("Row ") }
         }
         let all = rowLabels(hierarchy.flattenToElements())
-        let visible = rowLabels(hierarchy.deliver(options: .trimmed).elements)
+        let visible = rowLabels(hierarchy.onscreen().flattenToElements())
 
         // The parser enumerates every row via the index API (device-independent: the fixture has 30).
         XCTAssertEqual(Set(all).count, 30, "index API should enumerate all 30 rows")
@@ -414,7 +414,7 @@ final class UIViewIndexAPIValidationTests: XCTestCase {
             .compactMap { $0.accessibilityLabel }
             .filter { $0.hasPrefix("Row ") }
 
-        XCTAssertEqual(visible, spiVisible, "deliver(.trimmed) rows should match the SPI's visible-frame rows")
+        XCTAssertEqual(visible, spiVisible, "onscreen() rows should match the SPI's visible-frame rows")
         window.isHidden = true
     }
 
@@ -663,7 +663,7 @@ final class UIViewIndexAPIValidationTests: XCTestCase {
 
         // --- Configuration 1: visible-frame filtering (pruning on) ---
         // The parser now always produces the full tree; trimming off-screen elements is a delivery
-        // transform. `deliver(.trimmed)` is the analog of the SPI's `visibleFrameOnly` pruning.
+        // transform. `onscreen()` is the analog of the SPI's `visibleFrameOnly` pruning.
         do {
             let spiResult = vc.view.perform(
                 sel, with: Self.makeOptions(optionsClass, visibleFrameOnly: true)
@@ -672,8 +672,8 @@ final class UIViewIndexAPIValidationTests: XCTestCase {
 
             let parserIdentities = AccessibilityHierarchyParser()
                 .parseAccessibilityHierarchy(in: vc.view)
-                .deliver(options: .trimmed)
-                .elements
+                .onscreen()
+                .flattenToElements()
                 .map { ElementIdentity(from: $0) }
 
             print("\(label) [pruned] — SPI: \(spiIdentities.count), Parser: \(parserIdentities.count)")
