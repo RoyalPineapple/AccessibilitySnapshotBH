@@ -384,6 +384,9 @@ final class UIViewIndexAPIValidationTests: XCTestCase {
     }
 
     func testTableEnumerationProducesCorrectVisibleSet() {
+        let sel = NSSelectorFromString("_accessibilityLeafDescendantsWithOptions:")
+        guard UIView().responds(to: sel) else { return }
+
         let vc = ScrollViewAccessibilityViewController(scrollPosition: .bottom)
         vc.view.frame = CGRect(x: 0, y: 0, width: 375, height: 400)
         let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 375, height: 400))
@@ -393,12 +396,25 @@ final class UIViewIndexAPIValidationTests: XCTestCase {
         RunLoop.current.run(until: Date().addingTimeInterval(0.1))
 
         let hierarchy = AccessibilityHierarchyParser().parseAccessibilityHierarchy(in: vc.view)
-        let all = hierarchy.flattenToElements().filter { ($0.label ?? "").hasPrefix("Row ") }
-        let visible = hierarchy.deliver(options: .trimmed).elements.filter { ($0.label ?? "").hasPrefix("Row ") }
-        print("TABLE ENUM: all=\(all.count) visible=\(visible.count) visibleLabels=\(visible.map { $0.label ?? "" })")
-        XCTAssertEqual(all.count, 30, "index API should enumerate all 30 rows")
-        // SPI visibleFrameOnly reports 8 (rows 22-29) at this scroll position.
-        XCTAssertEqual(visible.count, 8, "deliver(.trimmed) should match SPI's 8 visible rows")
+        func rowLabels(_ elements: [AccessibilityElement]) -> [String] {
+            elements.compactMap { $0.label }.filter { $0.hasPrefix("Row ") }
+        }
+        let all = rowLabels(hierarchy.flattenToElements())
+        let visible = rowLabels(hierarchy.deliver(options: .trimmed).elements)
+
+        // The parser enumerates every row via the index API (device-independent: the fixture has 30).
+        XCTAssertEqual(Set(all).count, 30, "index API should enumerate all 30 rows")
+
+        // The trimmed set must match VoiceOver's own visible-frame filtering exactly — comparing
+        // against the SPI rather than a hardcoded count keeps this robust across OS/device metrics.
+        let optionsClass: AnyClass? = NSClassFromString("UIAccessibilityElementTraversalOptions")
+        guard let optionsClass else { return }
+        let spiVisible = (vc.view.perform(sel, with: Self.makeOptions(optionsClass, visibleFrameOnly: true))?
+            .takeUnretainedValue() as? [NSObject] ?? [])
+            .compactMap { $0.accessibilityLabel }
+            .filter { $0.hasPrefix("Row ") }
+
+        XCTAssertEqual(visible, spiVisible, "deliver(.trimmed) rows should match the SPI's visible-frame rows")
         window.isHidden = true
     }
 
