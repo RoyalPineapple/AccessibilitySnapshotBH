@@ -292,13 +292,15 @@ final class AccessibilityModelCodableTests: XCTestCase {
         XCTAssertEqual(object["frame"] as? [[Double]], [[10, 20], [100, 44]])
     }
 
-    // MARK: - Visibility Codable Compatibility
+    // MARK: - Visibility Codable
 
-    func testElementDecodesLegacyPayloadWithoutVisibilityKey() throws {
-        // A payload written before `visibility` existed must decode as `.onscreen`.
-        let legacyJSON = Data(#"""
+    func testElementDecodesPayloadWithoutVisibilityKeyWithoutCrashing() throws {
+        // `visibility` is a field this fork adds. A payload produced before it existed must still
+        // decode (defaulting to `.onscreen`) rather than crash — snapshot has real consumers whose
+        // stored data predates this field.
+        let priorJSON = Data(#"""
         {
-          "description": "Legacy",
+          "description": "Prior",
           "traits": [],
           "shape": {"type":"frame","frame":[[0,0],[10,10]]},
           "activationPoint": [5,5],
@@ -309,9 +311,9 @@ final class AccessibilityModelCodableTests: XCTestCase {
           "respondsToUserInteraction": false
         }
         """#.utf8)
-        let decoded = try JSONDecoder().decode(AccessibilityElement.self, from: legacyJSON)
+        let decoded = try JSONDecoder().decode(AccessibilityElement.self, from: priorJSON)
         XCTAssertEqual(decoded.visibility, .onscreen)
-        XCTAssertEqual(decoded.description, "Legacy")
+        XCTAssertEqual(decoded.description, "Prior")
     }
 
     func testOffscreenVisibilityRoundTrips() throws {

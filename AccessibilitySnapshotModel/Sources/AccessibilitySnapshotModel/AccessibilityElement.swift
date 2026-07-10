@@ -158,7 +158,8 @@ public struct AccessibilityElement: Hashable, Codable, Sendable {
         customRotors = try container.decode([CustomRotor].self, forKey: .customRotors)
         accessibilityLanguage = try container.decodeIfPresent(String.self, forKey: .accessibilityLanguage)
         respondsToUserInteraction = try container.decode(Bool.self, forKey: .respondsToUserInteraction)
-        // Payloads written before `visibility` existed decode as `.onscreen`.
+        // `visibility` is a field this fork adds. Decode leniently so payloads produced before it
+        // existed don't crash — they simply default to `.onscreen`.
         visibility = try container.decodeIfPresent(AccessibilityVisibility.self, forKey: .visibility) ?? .onscreen
     }
 
