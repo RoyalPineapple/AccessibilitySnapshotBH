@@ -24,15 +24,17 @@ public struct VerbosityConfiguration: Equatable {
 
     /// Controls where trait announcements (Button, Link, etc.) appear relative to the description.
     ///
-    /// This mirrors iOS 18.4's Settings > Accessibility > VoiceOver > Verbosity > Controls setting.
+    /// Mirrors iOS 18.4's Settings > Accessibility > VoiceOver > Verbosity > Controls, which offers
+    /// "Speak Before" / "Speak After" / "Don't Speak". Cases map 1:1 to those options.
     public enum TraitPosition: Equatable {
-        /// Announce trait before the label: "Button. Submit"
+        /// "Speak Before": announce the trait before the label — "Button. Submit".
         case before
 
-        /// Announce trait after the label: "Submit. Button." (default VoiceOver behavior)
+        /// "Speak After": announce the trait after the label — "Submit. Button." This is VoiceOver's
+        /// behavior prior to iOS 18.4 and the historical (byte-identity) output of this tool.
         case after
 
-        /// Don't announce traits at all: "Submit"
+        /// "Don't Speak": never announce the trait — "Submit".
         case none
     }
 
