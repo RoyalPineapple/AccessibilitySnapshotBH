@@ -668,6 +668,12 @@ public final class AccessibilityHierarchyParser {
                     let containerType: AccessibilityContainer.ContainerType
                     if info.traits.contains(.tabBar) {
                         containerType = .tabBar
+                    } else if info.type == .segmentedControlContainerType {
+                        // A `UISegmentedControl` reports the private container type 11 (outside the
+                        // public 0–4 enum), read here via the public `accessibilityContainerType`
+                        // property — no `is UISegmentedControl` class check. Its segments render as a
+                        // `.series` ("Segment A. Button. 1 of 3."), keeping the Button trait.
+                        containerType = .series
                     } else {
                         switch info.type {
                         case .semanticGroup:
@@ -1329,6 +1335,15 @@ private extension NSObject {
 }
 
 // MARK: -
+
+extension UIAccessibilityContainerType {
+    /// The private `accessibilityContainerType` value a `UISegmentedControl` reports (outside the
+    /// public `.none`…`.semanticGroup` range, 0–4). Read via the public property, this is a
+    /// class-free discriminator for segmented controls — the same private-value idiom the model uses
+    /// for private trait bits. Confirmed live on plain and SwiftUI-backed segmented controls
+    /// (iOS 18.5, 26.3); UIStepper/UISlider/UIDatePicker return 0, so this does not over-match.
+    static let segmentedControlContainerType = UIAccessibilityContainerType(rawValue: 11)!
+}
 
 extension UIView {
     func convert(_ path: UIBezierPath, from source: UIView?) -> UIBezierPath {
