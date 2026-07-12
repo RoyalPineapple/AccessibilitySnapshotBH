@@ -4,8 +4,8 @@ import AccessibilitySnapshotModel
 import UIKit
 import XCTest
 
-/// Byte-identity gate for the 4c cutover: the delivery-time
-/// `materializingDescriptions(verbosity: .verbose)` must reproduce the historical VoiceOver-style
+/// Byte-identity gate for the 4c cutover: the materializing flatten
+/// (`flattenToElements(verbosity: .verbose)`) must reproduce the historical VoiceOver-style
 /// description and hint for every element, string-for-string, now that the parser stores only raw
 /// facts (raw hint, un-contextualized) and the final spoken string is composed at delivery.
 ///
@@ -29,8 +29,7 @@ final class DescriptionMaterializationParityTests: XCTestCase {
         let parser = AccessibilityHierarchyParser()
         let materialized = parser
             .parseAccessibilityHierarchy(in: root)
-            .materializingDescriptions(verbosity: .verbose)
-            .flattenToElements()
+            .flattenToElements(verbosity: .verbose)
             .map { ($0.description, $0.hint) }
 
         let historical = expected.map { $0.object.accessibilityDescription(context: nil) }
@@ -69,8 +68,7 @@ final class DescriptionMaterializationParityTests: XCTestCase {
 
         let parser = AccessibilityHierarchyParser()
         let elements = parser.parseAccessibilityHierarchy(in: root)
-            .materializingDescriptions(verbosity: .verbose)
-            .flattenToElements()
+            .flattenToElements(verbosity: .verbose)
         XCTAssertEqual(elements.count, 3)
         XCTAssertTrue(elements.allSatisfy { $0.description.contains("of 3") }, "\(elements.map(\.description))")
     }

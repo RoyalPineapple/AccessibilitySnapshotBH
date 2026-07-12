@@ -14,6 +14,7 @@ public struct AccessibilitySnapshotView<Content: View>: View {
 
     @State private var markers: [AccessibilityMarker] = []
     @State private var containerSummaries: [ScrollContainerSummary] = []
+    @State private var colorAssignment: HierarchyColorAssignment?
     @State private var snapshotImage: UIImage?
     @State private var parseError: Error?
 
@@ -37,6 +38,10 @@ public struct AccessibilitySnapshotView<Content: View>: View {
         configuration.showsUnspokenTraits
     }
 
+    private var showContainers: Bool {
+        configuration.showContainers
+    }
+
     public var body: some View {
         VStack(spacing: 0) {
             if let snapshotImage = snapshotImage {
@@ -45,13 +50,24 @@ public struct AccessibilitySnapshotView<Content: View>: View {
                 errorView(error: parseError)
             }
 
-            LegendView(
-                markers: markers,
-                palette: palette,
-                showUserInputLabels: showUserInputLabels,
-                showUnspokenTraits: showUnspokenTraits
-            )
-            .frame(width: renderSize.width)
+            if showContainers, let colorAssignment {
+                HierarchyLegendView(
+                    nodes: colorAssignment.nodes,
+                    palette: palette,
+                    showUserInputLabels: showUserInputLabels,
+                    showUnspokenTraits: showUnspokenTraits
+                )
+                .padding(LegendLayoutMetrics.legendInset)
+                .frame(width: renderSize.width)
+            } else {
+                LegendView(
+                    markers: markers,
+                    palette: palette,
+                    showUserInputLabels: showUserInputLabels,
+                    showUnspokenTraits: showUnspokenTraits
+                )
+                .frame(width: renderSize.width)
+            }
         }
         .onAppear {
             // Only parse if we don't already have pre-parsed data
@@ -130,13 +146,17 @@ public struct AccessibilitySnapshotView<Content: View>: View {
                 in: hostingController.view,
                 rotorResultLimit: configuration.rotors.resultLimit
             )
-            // Materialize descriptions from graph-derived context before trimming (same policy as
-            // AccessibilitySnapshotBaseView).
-            .materializingDescriptions(verbosity: configuration.verbosity)
-            // (identical trim + summary policy as AccessibilitySnapshotBaseView)
+            // Flatten over the full tree (flattening materializes descriptions from graph-derived
+            // context), then prune by visibility — same policy as AccessibilitySnapshotBaseView.
             let includesOffscreen = configuration.includesOffscreenElements
-            markers = (includesOffscreen ? hierarchy : hierarchy.onscreen()).flattenToElements()
+            let elements = hierarchy.flattenToElements(verbosity: configuration.verbosity)
+            markers = includesOffscreen ? elements : elements.filter { $0.visibility == .onscreen }
             containerSummaries = includesOffscreen ? [] : hierarchy.scrollContainerSummaries()
+            colorAssignment = HierarchyColorAssignment.build(
+                from: hierarchy,
+                verbosity: configuration.verbosity,
+                includesOffscreen: includesOffscreen
+            )
         } catch {
             parseError = error
         }
@@ -173,6 +193,7 @@ public extension AccessibilitySnapshotView where Content == UIViewWrapper {
 public struct PreParsedAccessibilitySnapshotView: View {
     private let snapshotImage: UIImage
     private let markers: [AccessibilityMarker]
+    private let colorAssignment: HierarchyColorAssignment?
     private let configuration: AccessibilitySnapshotConfiguration
     private let palette: ColorPalette
     private let renderSize: CGSize
@@ -180,12 +201,18 @@ public struct PreParsedAccessibilitySnapshotView: View {
     public init(
         snapshotImage: UIImage,
         markers: [AccessibilityMarker],
+        hierarchy: [AccessibilityHierarchy] = [],
         configuration: AccessibilitySnapshotConfiguration = .init(viewRenderingMode: .drawHierarchyInRect),
         palette: ColorPalette = .default,
         renderSize: CGSize
     ) {
         self.snapshotImage = snapshotImage
         self.markers = markers
+        colorAssignment = hierarchy.isEmpty ? nil : HierarchyColorAssignment.build(
+            from: hierarchy,
+            verbosity: configuration.verbosity,
+            includesOffscreen: configuration.includesOffscreenElements
+        )
         self.configuration = configuration
         self.palette = palette
         self.renderSize = renderSize
@@ -197,6 +224,10 @@ public struct PreParsedAccessibilitySnapshotView: View {
 
     private var showUnspokenTraits: Bool {
         configuration.showsUnspokenTraits
+    }
+
+    private var showContainers: Bool {
+        configuration.showContainers
     }
 
     private var legendOnRight: Bool {
@@ -218,7 +249,7 @@ public struct PreParsedAccessibilitySnapshotView: View {
             // Tall view: snapshot on left, legend on right (may span multiple columns)
             HStack(alignment: .top, spacing: 0) {
                 snapshotWithOverlays
-                multiColumnLegend
+                legendContent
             }
             .background(Color(white: 0.9))
         } else {
@@ -226,15 +257,33 @@ public struct PreParsedAccessibilitySnapshotView: View {
             VStack(spacing: 0) {
                 snapshotWithOverlays
                     .frame(width: contentWidth) // Center snapshot if smaller than legend
-                LegendView(
-                    markers: markers,
-                    palette: palette,
-                    showUserInputLabels: showUserInputLabels,
-                    showUnspokenTraits: showUnspokenTraits
-                )
-                .frame(width: contentWidth)
+                legendContent
+                    .frame(width: contentWidth)
             }
             .background(Color(white: 0.9))
+        }
+    }
+
+    @ViewBuilder
+    private var legendContent: some View {
+        if showContainers, let colorAssignment {
+            HierarchyLegendView(
+                nodes: colorAssignment.nodes,
+                palette: palette,
+                showUserInputLabels: showUserInputLabels,
+                showUnspokenTraits: showUnspokenTraits
+            )
+            .padding(LegendLayoutMetrics.legendInset)
+            .frame(minWidth: LegendLayoutMetrics.minimumLegendWidth, alignment: .topLeading)
+        } else if legendOnRight {
+            multiColumnLegend
+        } else {
+            LegendView(
+                markers: markers,
+                palette: palette,
+                showUserInputLabels: showUserInputLabels,
+                showUnspokenTraits: showUnspokenTraits
+            )
         }
     }
 

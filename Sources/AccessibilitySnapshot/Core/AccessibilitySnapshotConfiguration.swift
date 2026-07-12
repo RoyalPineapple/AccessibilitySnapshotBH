@@ -82,6 +82,13 @@ public struct AccessibilitySnapshotConfiguration {
     /// byte-for-byte.
     public let verbosity: VerbosityConfiguration
 
+    /// Whether the SwiftUI legend renders hierarchically, grouping elements inside their
+    /// accessibility containers (dashed borders + container badges) and composing each element's
+    /// description live from its graph position. The snapshot area (image + overlays) is identical
+    /// either way; only the legend content changes. SwiftUI-only — the UIKit legend is unaffected.
+    /// Defaults to `false`.
+    public let showContainers: Bool
+
     // MARK: - Initialization
 
     /// Creates a new accessibility snapshot configuration.
@@ -107,7 +114,8 @@ public struct AccessibilitySnapshotConfiguration {
         showsUnspokenTraits: Bool = true,
         includesOffscreenElements: Bool = false,
         showsOffscreenElementCounts: Bool = false,
-        verbosity: VerbosityConfiguration = .verbose
+        verbosity: VerbosityConfiguration = .verbose,
+        showContainers: Bool = false
     ) {
         rendering = Rendering(renderMode: viewRenderingMode, colorMode: colorRenderingMode)
         rotors = Rotors(displayMode: includesCustomRotors, resultLimit: rotorResultLimit)
@@ -118,6 +126,7 @@ public struct AccessibilitySnapshotConfiguration {
         self.includesOffscreenElements = includesOffscreenElements
         self.showsOffscreenElementCounts = showsOffscreenElementCounts
         self.verbosity = verbosity
+        self.showContainers = showContainers
     }
 }
 

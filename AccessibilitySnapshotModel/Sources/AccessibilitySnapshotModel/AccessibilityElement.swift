@@ -188,7 +188,11 @@ public struct AccessibilityElement: Hashable, Codable, Sendable {
     /// Returns a copy with `description` and `hint` replaced. Used at delivery to write the
     /// materialized spoken string (composed from context + verbosity) onto an element the parser
     /// captured with only raw facts.
-    func withDescription(_ description: String, hint: String?) -> AccessibilityElement {
+    ///
+    /// The result is a terminal, render-ready projection: its `hint` holds the COMPOSED hint, so it
+    /// must never be fed back through `description(context:verbosity:)` (which reads `hint` as a raw
+    /// fact) — always re-compose from the original element instead.
+    public func withDescription(_ description: String, hint: String?) -> AccessibilityElement {
         AccessibilityElement(
             description: description,
             label: label,
