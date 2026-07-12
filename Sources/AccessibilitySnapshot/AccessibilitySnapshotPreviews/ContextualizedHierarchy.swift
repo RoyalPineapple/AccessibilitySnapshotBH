@@ -1,13 +1,18 @@
 import AccessibilitySnapshotCore
 import AccessibilitySnapshotParser
 
-/// The hierarchy with graph-derived context applied to each element: the spoken description and
-/// hint are composed from the element's container context, and every node gets an overlay color
-/// index — the render-ready tree behind the container-aware legend.
+/// The snapshot's hierarchical view model: markers in their container structure.
 ///
-/// Elements use their flat traversal-order index (matching the `markers` array), so element
-/// overlays render identically whether or not container mode is enabled.
-/// Containers get a separate sequential index starting after all elements.
+/// The hierarchy types (`AccessibilityHierarchy`, `AccessibilityElement`, `AccessibilityContainer`)
+/// are canonical — the parser's product, pure facts. Markers are view models for a snapshot:
+/// elements whose spoken description and hint have been composed from graph-derived container
+/// context, final and render-ready. This walk is the canonical→marker projection for the
+/// container-aware legend, just as the materializing flatten is for the flat legend. The composer
+/// (`description(context:verbosity:)`) only ever accepts canonical elements, so re-contextualizing
+/// a contextualized hierarchy is a category error: markers are rendered, never re-composed.
+///
+/// Marker numbering and colors are also snapshot properties, assigned by the view layer
+/// (see `HierarchyLegendView`).
 ///
 /// Like the materializing flatten, the walk derives context from the FULL child set (so "X of N"
 /// counts and data-table headers are complete) while emitting only on-screen elements unless
@@ -15,75 +20,46 @@ import AccessibilitySnapshotParser
 /// container is not an accessibility element).
 @available(iOS 16.0, *)
 public struct ContextualizedHierarchy {
-    /// A node with context applied and its assigned color index.
+    /// A marker (or container of markers) in hierarchy order.
     public enum Node {
-        case element(AccessibilityElement, colorIndex: Int)
-        case container(AccessibilityContainer, colorIndex: Int, children: [Node])
+        case element(AccessibilityMarker)
+        case container(AccessibilityContainer, children: [Node])
     }
 
-    /// The contextualized nodes in hierarchy order.
+    /// The contextualized nodes in hierarchy order. Markers appear in the same traversal order as
+    /// the materializing flatten, so a flat walk of this tree aligns with the `markers` array.
     public let nodes: [Node]
 
-    /// Applies context to a hierarchy tree, composing each element's description and hint and
-    /// assigning color indices.
+    /// Applies context to a hierarchy tree, composing each element's description and hint from its
+    /// graph position.
     public static func build(
         from hierarchy: [AccessibilityHierarchy],
         verbosity: VerbosityConfiguration = .verbose,
         includesOffscreen: Bool = false
     ) -> ContextualizedHierarchy {
-        var elementCounter = 0
-        var containerCounter = 0
-
         func includes(_ element: AccessibilityElement) -> Bool {
             includesOffscreen || element.visibility == .onscreen
         }
 
-        func countElements(in nodes: [AccessibilityHierarchy]) -> Int {
-            nodes.reduce(0) { count, node in
-                switch node {
-                case let .element(element, _):
-                    return count + (includes(element) ? 1 : 0)
-                case let .container(_, children):
-                    return count + countElements(in: children)
-                }
-            }
-        }
-
-        let totalElements = countElements(in: hierarchy)
-
-        func hasIncludedElement(_ node: AccessibilityHierarchy) -> Bool {
-            switch node {
-            case let .element(element, _):
-                return includes(element)
-            case let .container(_, children):
-                return children.contains { hasIncludedElement($0) }
-            }
-        }
-
-        func assign(_ node: AccessibilityHierarchy, context: DerivedContext?) -> Node? {
+        func contextualize(_ node: AccessibilityHierarchy, context: DerivedContext?) -> Node? {
             switch node {
             case let .element(element, _):
                 guard includes(element) else { return nil }
-                let index = elementCounter
-                elementCounter += 1
-                // Fold the graph-derived context into the rendered strings — the same composition
-                // the materializing flatten performs, so both legend modes speak identically.
+                // Project the canonical element to a marker: fold the graph-derived context into
+                // the rendered strings — the same composition the materializing flatten performs,
+                // so both legend modes speak identically.
                 let (description, hint) = element.description(context: context, verbosity: verbosity)
-                return .element(element.withDescription(description, hint: hint), colorIndex: index)
+                return .element(element.withDescription(description, hint: hint))
 
             case let .container(container, children):
-                guard hasIncludedElement(node) else { return nil }
-                // Pre-order: a container is numbered before any containers nested inside it.
-                let index = totalElements + containerCounter
-                containerCounter += 1
-                let assignedChildren = children.enumerated().compactMap { childIndex, child in
-                    assign(child, context: container.derivedContext(forChildAt: childIndex, in: children))
+                let contextualizedChildren = children.enumerated().compactMap { childIndex, child in
+                    contextualize(child, context: container.derivedContext(forChildAt: childIndex, in: children))
                 }
-                return .container(container, colorIndex: index, children: assignedChildren)
+                guard !contextualizedChildren.isEmpty else { return nil }
+                return .container(container, children: contextualizedChildren)
             }
         }
 
-        let assignedNodes = hierarchy.compactMap { assign($0, context: nil) }
-        return ContextualizedHierarchy(nodes: assignedNodes)
+        return ContextualizedHierarchy(nodes: hierarchy.compactMap { contextualize($0, context: nil) })
     }
 }
