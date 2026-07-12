@@ -229,38 +229,61 @@ extension AccessibilityElement {
         }
 
         if verbosity.includesHints {
-            if traits.contains(.switchButton) && !traits.contains(.notEnabled) {
-                if let existingHintDescription = hintDescription?.nonEmpty()?.strippingTrailingPeriod() {
-                    hintDescription = String(format: strings.switchButtonTraitHintFormat, existingHintDescription)
-                } else {
-                    hintDescription = strings.switchButtonTraitHint
-                }
-            }
-
-            if traits.contains(.textEntry) && !traits.contains(.notEnabled) {
-                if traits.contains(.isEditing) {
-                    hintDescription = strings.textEntryIsEditingTraitHint
-                } else if traits.contains(.textArea) {
-                    hintDescription = strings.textAreaTraitHint
-                } else {
-                    hintDescription = strings.textEntryTraitHint
-                }
-            }
-
-            let hasHintOnly = (hint?.nonEmpty() != nil) && (label?.nonEmpty() == nil) && (value?.nonEmpty() == nil)
-            let hidesAdjustableHint = traits.contains(.notEnabled) || traits.contains(.switchButton) || hasHintOnly
-            if traits.contains(.adjustable), !hidesAdjustableHint {
-                if let existingHintDescription = hintDescription?.nonEmpty()?.strippingTrailingPeriod() {
-                    hintDescription = String(format: strings.adjustableTraitHintFormat, existingHintDescription)
-                } else {
-                    hintDescription = strings.adjustableTraitHint
-                }
-            }
+            hintDescription = mergingStateUtterances(into: hintDescription, strings: strings)
         } else {
             hintDescription = nil
         }
 
         return (accessibilityDescription, hintDescription)
+    }
+
+    /// The VoiceOver state utterances derived from this element's traits alone ("Double tap to
+    /// toggle setting.", "Double tap to edit.", the adjustable swipe hint) — the spoken hint with
+    /// no user-set `hint` participating.
+    ///
+    /// The user-set string is the stored `hint` fact; the full spoken merge is the `hint` half of
+    /// `description(context:verbosity:)`. All three run the same pipeline, so the parts always
+    /// agree with the whole: `spoken = merge(hint, state)` by construction, never by re-parsing.
+    public func stateHint(verbosity: VerbosityConfiguration = .verbose) -> String? {
+        guard verbosity.includesHints else { return nil }
+        return mergingStateUtterances(into: nil, strings: Strings(locale: accessibilityLanguage))
+    }
+
+    /// Folds the trait-derived state utterances into `userHint` using the historical VoiceOver
+    /// rules: switch hints WRAP the user hint, text-entry hints REPLACE it, and the adjustable
+    /// hint wraps whatever survives (chaining onto a text-entry replacement when both apply).
+    private func mergingStateUtterances(into userHint: String?, strings: Strings) -> String? {
+        var hintDescription = userHint
+
+        if traits.contains(.switchButton) && !traits.contains(.notEnabled) {
+            if let existingHintDescription = hintDescription?.nonEmpty()?.strippingTrailingPeriod() {
+                hintDescription = String(format: strings.switchButtonTraitHintFormat, existingHintDescription)
+            } else {
+                hintDescription = strings.switchButtonTraitHint
+            }
+        }
+
+        if traits.contains(.textEntry) && !traits.contains(.notEnabled) {
+            if traits.contains(.isEditing) {
+                hintDescription = strings.textEntryIsEditingTraitHint
+            } else if traits.contains(.textArea) {
+                hintDescription = strings.textAreaTraitHint
+            } else {
+                hintDescription = strings.textEntryTraitHint
+            }
+        }
+
+        let hasHintOnly = (hint?.nonEmpty() != nil) && (label?.nonEmpty() == nil) && (value?.nonEmpty() == nil)
+        let hidesAdjustableHint = traits.contains(.notEnabled) || traits.contains(.switchButton) || hasHintOnly
+        if traits.contains(.adjustable), !hidesAdjustableHint {
+            if let existingHintDescription = hintDescription?.nonEmpty()?.strippingTrailingPeriod() {
+                hintDescription = String(format: strings.adjustableTraitHintFormat, existingHintDescription)
+            } else {
+                hintDescription = strings.adjustableTraitHint
+            }
+        }
+
+        return hintDescription
     }
 
     // MARK: - Private

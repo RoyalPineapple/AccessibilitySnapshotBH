@@ -101,4 +101,33 @@ final class DescriptionAssemblyTests: XCTestCase {
         verbosity.includesHints = false
         XCTAssertNil(el.description(context: nil, verbosity: verbosity).hint)
     }
+
+    // MARK: - Hint decomposition: user fact vs state utterances vs spoken merge
+
+    func testSwitchStateHintWrapsUserHint() {
+        let sw = element(label: "Wi-Fi", value: "1", traits: [.button, .switchButton], hint: "Toggles Wi-Fi.")
+        XCTAssertEqual(sw.hint, "Toggles Wi-Fi.")
+        XCTAssertEqual(sw.stateHint(), "Double tap to toggle setting.")
+        XCTAssertEqual(sw.description(context: nil).hint, "Toggles Wi-Fi. Double tap to toggle setting.")
+    }
+
+    func testTextEntryStateHintReplacesUserHint() {
+        let field = element(label: "Email", traits: .textEntry, hint: "Enter your email.")
+        XCTAssertEqual(field.hint, "Enter your email.")
+        XCTAssertEqual(field.stateHint(), "Double tap to edit.")
+        XCTAssertEqual(field.description(context: nil).hint, "Double tap to edit.")
+    }
+
+    func testAdjustableStateHintChainsOntoTextEntry() {
+        let stepper = element(label: "Quantity", value: "3", traits: [.textEntry, .adjustable], hint: "Sets quantity.")
+        let chained = "Double tap to edit. Swipe up or down with one finger to adjust the value."
+        XCTAssertEqual(stepper.stateHint(), chained)
+        XCTAssertEqual(stepper.description(context: nil).hint, chained)
+    }
+
+    func testStateHintNilForPlainElement() {
+        let button = element(label: "Save", traits: .button, hint: "Saves your work")
+        XCTAssertNil(button.stateHint())
+        XCTAssertEqual(button.description(context: nil).hint, "Saves your work")
+    }
 }
