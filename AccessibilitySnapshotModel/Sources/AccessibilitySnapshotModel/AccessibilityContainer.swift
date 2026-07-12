@@ -5,6 +5,13 @@ public struct AccessibilityContainer: Hashable, Codable, Sendable {
         case list
         case landmark
         case dataTable(rowCount: Int, columnCount: Int, cells: [DataTableCellInfo?])
+        /// A tab bar. Members announce "Tab. N of M.", with any `Button` trait replaced by "Tab."
+        ///
+        /// Normalizes UIKit's two channels for tab-ness (the public `.tabBar` trait predates
+        /// `accessibilityContainerType` by one iOS release, so it's a container role expressed as
+        /// a trait): custom views union `.tabBar` onto themselves; a real `UITabBar` carries no
+        /// `.tabBar` trait (it reports `.semanticGroup`) and is recognized by the private
+        /// `.tabBarItem` trait on its button children instead.
         case tabBar
         /// An ordered series whose members announce a position ("N of M") while keeping their own
         /// trait (e.g. a `UISegmentedControl`'s segments render "Segment A. Button. 1 of 3."). Unlike
