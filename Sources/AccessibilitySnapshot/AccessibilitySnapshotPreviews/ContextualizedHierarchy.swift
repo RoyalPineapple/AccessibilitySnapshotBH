@@ -31,35 +31,25 @@ public struct ContextualizedHierarchy {
     public let nodes: [Node]
 
     /// Applies context to a hierarchy tree, composing each element's description and hint from its
-    /// graph position.
+    /// graph position via the model's single contextualize walk — the same walk the materializing
+    /// flatten uses, so both legend modes speak identically.
     public static func build(
         from hierarchy: [AccessibilityHierarchy],
         verbosity: VerbosityConfiguration = .verbose,
         includesOffscreen: Bool = false
     ) -> ContextualizedHierarchy {
-        func includes(_ element: AccessibilityElement) -> Bool {
-            includesOffscreen || element.visibility == .onscreen
-        }
-
-        func contextualize(_ node: AccessibilityHierarchy, context: DerivedContext?) -> Node? {
-            switch node {
+        func node(from marker: AccessibilityHierarchy) -> Node? {
+            switch marker {
             case let .element(element, _):
-                guard includes(element) else { return nil }
-                // Project the canonical element to a marker: fold the graph-derived context into
-                // the rendered strings — the same composition the materializing flatten performs,
-                // so both legend modes speak identically.
-                let (description, hint) = element.description(context: context, verbosity: verbosity)
-                return .element(element.withDescription(description, hint: hint))
-
+                guard includesOffscreen || element.visibility == .onscreen else { return nil }
+                return .element(element)
             case let .container(container, children):
-                let contextualizedChildren = children.enumerated().compactMap { childIndex, child in
-                    contextualize(child, context: container.derivedContext(forChildAt: childIndex, in: children))
-                }
-                guard !contextualizedChildren.isEmpty else { return nil }
-                return .container(container, children: contextualizedChildren)
+                let filteredChildren = children.compactMap { node(from: $0) }
+                guard !filteredChildren.isEmpty else { return nil }
+                return .container(container, children: filteredChildren)
             }
         }
 
-        return ContextualizedHierarchy(nodes: hierarchy.compactMap { contextualize($0, context: nil) })
+        return ContextualizedHierarchy(nodes: hierarchy.contextualized(verbosity: verbosity).compactMap { node(from: $0) })
     }
 }

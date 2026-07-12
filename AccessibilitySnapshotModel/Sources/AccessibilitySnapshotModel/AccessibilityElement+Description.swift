@@ -196,6 +196,10 @@ extension AccessibilityElement {
             }
         }
 
+        // Real VoiceOver (verified on iOS 26.3) splits this block: "N of M" and table position are
+        // trailing like here, but list/landmark boundary phrases are woven into the trait-specifier
+        // position mid-utterance. We keep the historical trailing placement for byte-identity;
+        // moving boundaries to the trait block is a documented-description-change candidate.
         if verbosity.includesContainerContext, let context = context {
             switch context {
             case let .series(index: index, count: count),
