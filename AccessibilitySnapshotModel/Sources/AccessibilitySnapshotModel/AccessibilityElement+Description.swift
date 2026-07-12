@@ -78,16 +78,9 @@ extension AccessibilityElement {
             }
         }
 
-        if verbosity.includesCustomContent {
-            for content in customContent where content.isImportant {
-                let contentDescription = content.value.isEmpty ? content.label : content.value
-                if let existingDescription = accessibilityDescription.nonEmpty() {
-                    accessibilityDescription = "\(existingDescription), \(contentDescription)"
-                } else {
-                    accessibilityDescription = contentDescription
-                }
-            }
-        }
+        // Important custom content is NOT folded into the spoken description — the historical parser
+        // never did this, and the legend renders it separately as a bold "More Content Available" row.
+        // (Kept out of the description to preserve byte-identity.)
 
         if traits.contains(.selected) {
             if let existingDescription = accessibilityDescription.nonEmpty() {

@@ -117,6 +117,10 @@ open class AccessibilitySnapshotBaseView: SnapshotAndLegendView {
             in: containedView,
             rotorResultLimit: snapshotConfiguration.rotors.resultLimit
         )
+        // Materialize each element's spoken description from its graph-derived container context now,
+        // over the full (unpruned) tree so data-table header text resolves before any off-screen
+        // trim drops a header. `.verbose` reproduces the historical parse-time-baked strings.
+        .materializingDescriptions(verbosity: snapshotConfiguration.verbosity)
         let includesOffscreen = snapshotConfiguration.includesOffscreenElements
 
         let parsedData = ParsedAccessibilityData(

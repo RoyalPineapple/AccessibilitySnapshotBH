@@ -130,6 +130,9 @@ public struct AccessibilitySnapshotView<Content: View>: View {
                 in: hostingController.view,
                 rotorResultLimit: configuration.rotors.resultLimit
             )
+            // Materialize descriptions from graph-derived context before trimming (same policy as
+            // AccessibilitySnapshotBaseView).
+            .materializingDescriptions(verbosity: configuration.verbosity)
             // (identical trim + summary policy as AccessibilitySnapshotBaseView)
             let includesOffscreen = configuration.includesOffscreenElements
             markers = (includesOffscreen ? hierarchy : hierarchy.onscreen()).flattenToElements()

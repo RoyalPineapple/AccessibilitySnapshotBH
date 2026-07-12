@@ -287,7 +287,7 @@ public final class AccessibilityHierarchyParser {
         rotorResultLimit: Int,
         visibility: AccessibilityVisibility
     ) -> AccessibilityElement {
-        let (description, hint) = object.accessibilityDescription(context: context)
+        let (description, _) = object.accessibilityDescription(context: context)
         let activationPoint = object.accessibilityActivationPoint
 
         return AccessibilityElement(
@@ -296,7 +296,10 @@ public final class AccessibilityHierarchyParser {
             value: object.accessibilityValue,
             traits: AccessibilityTraits(object.accessibilityTraits),
             identifier: object.identifier,
-            hint: hint,
+            // Store the RAW author hint, not the parse-time-composed one. The trait-derived hint suffix
+            // ("Double tap to toggle setting.", "Text field.", "Adjustable. …") is composed at delivery
+            // by `description(context:verbosity:)`; baking it here too would double it when materialized.
+            hint: object.accessibilityHint?.nonEmpty(),
             userInputLabels: object.authoredUserInputLabels,
             shape: Self.accessibilityShape(for: object, in: root),
             activationPoint: AccessibilityPoint(root.convert(activationPoint, from: nil)),
@@ -657,7 +660,7 @@ public final class AccessibilityHierarchyParser {
                       index < elements.count else { return [] }
                 return [(makeElement(elements[index], index, object), index, object)]
 
-            case let .group(children, _, _, containerInfo):
+            case let .group(children, explicitlyOrdered, _, containerInfo):
                 let mappedChildren = children.flatMap { mapNode($0) }.sorted { lhs, rhs in
                     lhs.sortIndex < rhs.sortIndex
                 }
@@ -688,10 +691,19 @@ public final class AccessibilityHierarchyParser {
                         switch info.type {
                         case .semanticGroup:
                             containerType = .semanticGroup(label: info.label, value: info.value)
-                        case .list:
+                        case .list where explicitlyOrdered:
                             containerType = .list
-                        case .landmark:
+                        case .landmark where explicitlyOrdered:
                             containerType = .landmark
+                        case .list, .landmark:
+                            // A `.list`/`.landmark` view that vends its children as subviews (not via
+                            // `accessibilityElements`/`accessibilityElement(at:)`) historically lent NO
+                            // list/landmark context — the old `superviewContextParent()` returned nil for
+                            // these, deriving context only on the container-API path (`explicitlyOrdered`).
+                            // Preserve that byte-for-byte: emit a plain semantic group so no start/end
+                            // context is derived at delivery. (More-faithful subview-based boundaries are a
+                            // deliberate, separately-gated change — plan P5 — not this refactor.)
+                            containerType = .semanticGroup(label: info.label, value: info.value)
                         case .dataTable:
                             let cells = dataTableCells(
                                 for: info.view as? UIAccessibilityContainerDataTable,
