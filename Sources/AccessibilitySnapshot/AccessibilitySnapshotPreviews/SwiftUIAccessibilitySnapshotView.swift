@@ -14,7 +14,7 @@ public struct AccessibilitySnapshotView<Content: View>: View {
 
     @State private var markers: [AccessibilityMarker] = []
     @State private var containerSummaries: [ScrollContainerSummary] = []
-    @State private var colorAssignment: HierarchyColorAssignment?
+    @State private var contextualizedHierarchy: ContextualizedHierarchy?
     @State private var snapshotImage: UIImage?
     @State private var parseError: Error?
 
@@ -50,9 +50,9 @@ public struct AccessibilitySnapshotView<Content: View>: View {
                 errorView(error: parseError)
             }
 
-            if showContainers, let colorAssignment {
+            if showContainers, let contextualizedHierarchy {
                 HierarchyLegendView(
-                    nodes: colorAssignment.nodes,
+                    nodes: contextualizedHierarchy.nodes,
                     palette: palette,
                     showUserInputLabels: showUserInputLabels,
                     showUnspokenTraits: showUnspokenTraits
@@ -152,7 +152,7 @@ public struct AccessibilitySnapshotView<Content: View>: View {
             let elements = hierarchy.flattenToElements(verbosity: configuration.verbosity)
             markers = includesOffscreen ? elements : elements.filter { $0.visibility == .onscreen }
             containerSummaries = includesOffscreen ? [] : hierarchy.scrollContainerSummaries()
-            colorAssignment = HierarchyColorAssignment.build(
+            contextualizedHierarchy = ContextualizedHierarchy.build(
                 from: hierarchy,
                 verbosity: configuration.verbosity,
                 includesOffscreen: includesOffscreen
@@ -193,7 +193,7 @@ public extension AccessibilitySnapshotView where Content == UIViewWrapper {
 public struct PreParsedAccessibilitySnapshotView: View {
     private let snapshotImage: UIImage
     private let markers: [AccessibilityMarker]
-    private let colorAssignment: HierarchyColorAssignment?
+    private let contextualizedHierarchy: ContextualizedHierarchy?
     private let configuration: AccessibilitySnapshotConfiguration
     private let palette: ColorPalette
     private let renderSize: CGSize
@@ -208,7 +208,7 @@ public struct PreParsedAccessibilitySnapshotView: View {
     ) {
         self.snapshotImage = snapshotImage
         self.markers = markers
-        colorAssignment = hierarchy.isEmpty ? nil : HierarchyColorAssignment.build(
+        contextualizedHierarchy = hierarchy.isEmpty ? nil : ContextualizedHierarchy.build(
             from: hierarchy,
             verbosity: configuration.verbosity,
             includesOffscreen: configuration.includesOffscreenElements
@@ -266,9 +266,9 @@ public struct PreParsedAccessibilitySnapshotView: View {
 
     @ViewBuilder
     private var legendContent: some View {
-        if showContainers, let colorAssignment {
+        if showContainers, let contextualizedHierarchy {
             HierarchyLegendView(
-                nodes: colorAssignment.nodes,
+                nodes: contextualizedHierarchy.nodes,
                 palette: palette,
                 showUserInputLabels: showUserInputLabels,
                 showUnspokenTraits: showUnspokenTraits

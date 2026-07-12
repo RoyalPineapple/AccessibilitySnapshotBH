@@ -5,7 +5,7 @@ import SwiftUI
 /// Renders a hierarchical legend from assigned nodes, with containers wrapping their children.
 @available(iOS 16.0, *)
 struct HierarchyLegendView: View {
-    let nodes: [HierarchyColorAssignment.AssignedNode]
+    let nodes: [ContextualizedHierarchy.Node]
     let palette: ColorPalette
     let showUserInputLabels: Bool
     let showUnspokenTraits: Bool
@@ -19,7 +19,7 @@ struct HierarchyLegendView: View {
     }
 
     @ViewBuilder
-    private func nodeView(for node: HierarchyColorAssignment.AssignedNode) -> some View {
+    private func nodeView(for node: ContextualizedHierarchy.Node) -> some View {
         switch node {
         case let .element(element, colorIndex):
             LegendEntryView(

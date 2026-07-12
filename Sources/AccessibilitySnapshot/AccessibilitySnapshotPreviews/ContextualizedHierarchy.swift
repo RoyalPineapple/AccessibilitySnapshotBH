@@ -1,8 +1,9 @@
 import AccessibilitySnapshotCore
 import AccessibilitySnapshotParser
 
-/// Assigns color indices to containers and elements in the hierarchy, materializing each element's
-/// spoken description from its graph-derived container context as it walks.
+/// The hierarchy with graph-derived context applied to each element: the spoken description and
+/// hint are composed from the element's container context, and every node gets an overlay color
+/// index — the render-ready tree behind the container-aware legend.
 ///
 /// Elements use their flat traversal-order index (matching the `markers` array), so element
 /// overlays render identically whether or not container mode is enabled.
@@ -13,22 +14,23 @@ import AccessibilitySnapshotParser
 /// `includesOffscreen` is set; a container whose children are all filtered out is dropped (an empty
 /// container is not an accessibility element).
 @available(iOS 16.0, *)
-public struct HierarchyColorAssignment {
-    /// A node with its assigned color index.
-    public enum AssignedNode {
+public struct ContextualizedHierarchy {
+    /// A node with context applied and its assigned color index.
+    public enum Node {
         case element(AccessibilityElement, colorIndex: Int)
-        case container(AccessibilityContainer, colorIndex: Int, children: [AssignedNode])
+        case container(AccessibilityContainer, colorIndex: Int, children: [Node])
     }
 
-    /// The assigned nodes in hierarchy order.
-    public let nodes: [AssignedNode]
+    /// The contextualized nodes in hierarchy order.
+    public let nodes: [Node]
 
-    /// Builds color assignments from a hierarchy tree.
+    /// Applies context to a hierarchy tree, composing each element's description and hint and
+    /// assigning color indices.
     public static func build(
         from hierarchy: [AccessibilityHierarchy],
         verbosity: VerbosityConfiguration = .verbose,
         includesOffscreen: Bool = false
-    ) -> HierarchyColorAssignment {
+    ) -> ContextualizedHierarchy {
         var elementCounter = 0
         var containerCounter = 0
 
@@ -58,7 +60,7 @@ public struct HierarchyColorAssignment {
             }
         }
 
-        func assign(_ node: AccessibilityHierarchy, context: DerivedContext?) -> AssignedNode? {
+        func assign(_ node: AccessibilityHierarchy, context: DerivedContext?) -> Node? {
             switch node {
             case let .element(element, _):
                 guard includes(element) else { return nil }
@@ -82,6 +84,6 @@ public struct HierarchyColorAssignment {
         }
 
         let assignedNodes = hierarchy.compactMap { assign($0, context: nil) }
-        return HierarchyColorAssignment(nodes: assignedNodes)
+        return ContextualizedHierarchy(nodes: assignedNodes)
     }
 }
