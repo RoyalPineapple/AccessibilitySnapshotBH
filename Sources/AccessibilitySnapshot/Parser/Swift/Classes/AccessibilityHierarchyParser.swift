@@ -157,7 +157,7 @@ public final class AccessibilityHierarchyParser {
         userInterfaceLayoutDirectionProvider: UserInterfaceLayoutDirectionProviding = UIApplication.shared,
         userInterfaceIdiomProvider: UserInterfaceIdiomProviding = UIDevice.current
     ) -> [AccessibilityHierarchy] {
-        parseAccessibilityHierarchy(
+        let hierarchy: [AccessibilityHierarchy] = parseAccessibilityHierarchy(
             in: root,
             rotorResultLimit: rotorResultLimit,
             userInterfaceLayoutDirectionProvider: userInterfaceLayoutDirectionProvider,
@@ -165,6 +165,8 @@ public final class AccessibilityHierarchyParser {
             makeElement: { element, traversalIndex, _ in .element(element, traversalIndex: traversalIndex) },
             makeContainer: { container, children, _ in .container(container, children: children) }
         )
+        ParserFidelity.recordForScoring(root)
+        return hierarchy
     }
 
     /// Parses the accessibility hierarchy and folds it into a caller-defined node type.

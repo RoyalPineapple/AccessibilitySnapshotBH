@@ -79,10 +79,22 @@ jobs:
       - name: Tuist Build
         run: tuist build --path Example
       - name: Tuist Test - en
+        env:
+          TEST_RUNNER_PARSER_FIDELITY_REPORT_PATH: ${{ github.workspace }}/parser-fidelity-${{ matrix.platform }}.md
         run: tuist test --path Example -d '${{ matrix.device }}' -o ${{ matrix.os }} --platform iOS --result-bundle-path TestResults-${{ matrix.os }}.xcresult "AccessibilitySnapshotDemo (en)"
       - name: Tuist Test - AccessibilitySnapshotPreviews
         if: matrix.platform != 'iOS_17'
+        env:
+          TEST_RUNNER_PARSER_FIDELITY_REPORT_PATH: ${{ github.workspace }}/parser-fidelity-${{ matrix.platform }}.md
         run: xcodebuild test -workspace Example/AccessibilitySnapshot.xcworkspace -scheme AccessibilitySnapshotPreviewsDemo -destination 'platform=iOS Simulator,name=${{ matrix.device }},OS=${{ matrix.os }}' -resultBundlePath TestResults-SwiftUI-${{ matrix.os }}.xcresult
+      - name: Parser Fidelity Report
+        if: always()
+        run: |
+          if [ -f "parser-fidelity-${{ matrix.platform }}.md" ]; then
+            cat "parser-fidelity-${{ matrix.platform }}.md" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "No parser fidelity report produced (${{ matrix.platform }})." >> "$GITHUB_STEP_SUMMARY"
+          fi
       - name: Zip Test Results
         if: failure()
         run: zip -r TestResults-${{ matrix.platform }}.zip TestResults-*.xcresult
