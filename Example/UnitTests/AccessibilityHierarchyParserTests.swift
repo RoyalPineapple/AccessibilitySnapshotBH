@@ -714,10 +714,10 @@ final class AccessibilityHierarchyParserTests: XCTestCase {
         )
 
         let footer = UIView(frame: CGRect(x: 0, y: 44, width: 200, height: 44))
-        let button = UIButton(frame: footer.bounds)
-        button.isAccessibilityElement = true
-        button.accessibilityLabel = "footer"
-        footer.addSubview(button)
+        let footerElement = UIView(frame: footer.bounds)
+        footerElement.isAccessibilityElement = true
+        footerElement.accessibilityLabel = "footer"
+        footer.addSubview(footerElement)
         table.tableFooterView = footer
 
         let unvendedSubview = UIView(frame: CGRect(x: 0, y: 88, width: 200, height: 44))
@@ -729,6 +729,58 @@ final class AccessibilityHierarchyParserTests: XCTestCase {
 
         // The footer is a UIButton, so its materialized description carries the "Button." trait suffix.
         XCTAssertEqual(elements, ["row", "footer. Button."])
+    }
+
+    func testIndexedTableIncludesHeaderBeforeVendedRowsExactlyOnce() {
+        let table = IndexedTableView(
+            frame: CGRect(x: 0, y: 0, width: 200, height: 200),
+            indexedLabels: ["first row", "second row"],
+            header: .present(label: "table header"),
+            containerType: .list
+        )
+
+        assertDescriptionProjections(
+            in: table,
+            equal: ["table header", "first row. List Start.", "second row. List End."]
+        )
+    }
+
+    func testIndexedTableIncludesHeaderWithoutVendedRowsExactlyOnce() {
+        let table = IndexedTableView(
+            frame: CGRect(x: 0, y: 0, width: 200, height: 200),
+            indexedLabels: [],
+            header: .present(label: "table header"),
+            containerType: .list
+        )
+
+        assertDescriptionProjections(in: table, equal: ["table header"])
+    }
+
+    func testIndexedTableWithoutHeaderPreservesVendedRows() {
+        let table = IndexedTableView(
+            frame: CGRect(x: 0, y: 0, width: 200, height: 200),
+            indexedLabels: ["first row", "second row"],
+            containerType: .list
+        )
+
+        assertDescriptionProjections(
+            in: table,
+            equal: ["first row. List Start.", "second row. List End."]
+        )
+    }
+
+    func testIndexedTableNormalizesAlreadyVendedHeaderToFrontExactlyOnce() {
+        let table = IndexedTableView(
+            frame: CGRect(x: 0, y: 0, width: 200, height: 200),
+            indexedLabels: ["first row", "second row"],
+            header: .alreadyVended(label: "table header"),
+            containerType: .list
+        )
+
+        assertDescriptionProjections(
+            in: table,
+            equal: ["table header", "first row. List Start.", "second row. List End."]
+        )
     }
 
     // MARK: - Zero-Frame Wrapper Views
@@ -1221,6 +1273,24 @@ final class AccessibilityHierarchyParserTests: XCTestCase {
             userInterfaceIdiomProvider: TestUserInterfaceIdiomProvider(userInterfaceIdiom: .phone)
         )
     }
+
+    private func assertDescriptionProjections(
+        in view: UIView,
+        equal expectedDescriptions: [String],
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        let parser = AccessibilityHierarchyParser()
+        let hierarchyDescriptions = parser.parseAccessibilityHierarchy(
+            in: view,
+            userInterfaceLayoutDirectionProvider: TestUserInterfaceLayoutDirectionProvider(userInterfaceLayoutDirection: .leftToRight),
+            userInterfaceIdiomProvider: TestUserInterfaceIdiomProvider(userInterfaceIdiom: .phone)
+        ).flattenToElements().map(\.description)
+        let legacyDescriptions = parseMarkers(in: view).map(\.description)
+
+        XCTAssertEqual(hierarchyDescriptions, expectedDescriptions, file: file, line: line)
+        XCTAssertEqual(legacyDescriptions, expectedDescriptions, file: file, line: line)
+    }
 }
 
 // MARK: -
@@ -1258,15 +1328,46 @@ private final class AccessibilityFrameOverrideView: UIView {
 }
 
 private final class IndexedTableView: UITableView {
-    private var indexedElements: [UIAccessibilityElement] = []
+    enum Header {
+        case absent
+        case present(label: String)
+        case alreadyVended(label: String)
+    }
 
-    init(frame: CGRect, indexedLabels: [String]) {
+    private var indexedElements: [NSObject] = []
+
+    init(
+        frame: CGRect,
+        indexedLabels: [String],
+        header: Header = .absent,
+        containerType: UIAccessibilityContainerType = .none
+    ) {
         super.init(frame: frame, style: .plain)
+        accessibilityContainerType = containerType
         indexedElements = indexedLabels.enumerated().map { index, label in
             let element = UIAccessibilityElement(accessibilityContainer: self)
             element.accessibilityLabel = label
             element.accessibilityFrame = CGRect(x: 0, y: index * 44, width: 200, height: 44)
             return element
+        }
+
+        guard case .absent = header else {
+            let headerView = UIView(frame: CGRect(x: 0, y: 0, width: 200, height: 44))
+            let headerElement = UIView(frame: headerView.bounds)
+            headerElement.isAccessibilityElement = true
+            switch header {
+            case .absent:
+                break
+            case let .present(label), let .alreadyVended(label):
+                headerElement.accessibilityLabel = label
+            }
+            headerView.addSubview(headerElement)
+            tableHeaderView = headerView
+
+            if case .alreadyVended = header {
+                indexedElements.append(headerView)
+            }
+            return
         }
     }
 
@@ -1285,8 +1386,8 @@ private final class IndexedTableView: UITableView {
     }
 
     override func index(ofAccessibilityElement element: Any) -> Int {
-        guard let object = element as? UIAccessibilityElement,
-              let index = indexedElements.firstIndex(of: object)
+        guard let object = element as? NSObject,
+              let index = indexedElements.firstIndex(where: { $0 === object })
         else {
             return NSNotFound
         }
