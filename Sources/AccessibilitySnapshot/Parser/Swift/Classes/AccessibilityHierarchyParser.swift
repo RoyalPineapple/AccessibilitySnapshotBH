@@ -1086,7 +1086,7 @@ private extension NSObject {
 
         var recursiveAccessibilityHierarchy: [AccessibilityNode] = []
 
-        if isAccessibilityElement {
+        if isAccessibilityElement, !hasTableBoundary {
             if !isOffscreen, !(self is UIView) {
                 // A framed non-UIView element clipped out by a scrollable ancestor is marked
                 // off-screen rather than pruned.
@@ -1117,7 +1117,15 @@ private extension NSObject {
             allowContainerFallback: shouldUseAccessibilityContainerElements
         ) {
             var accessibilityHierarchyOfElements: [AccessibilityNode] = []
-            for (index, element) in accessibilityElements.enumerated() {
+            let tableView = self as? UITableView
+            let headerView = tableView?.tableHeaderView
+            let footerView = tableView?.tableFooterView
+            let boundaryContextParent = contextParent ?? superviewContextParent()
+
+            let vendedElements = accessibilityElements.filter { element in
+                element !== headerView && element !== footerView
+            }
+            for (index, element) in vendedElements.enumerated() {
                 // The enumeration index/count are the child's ordered graph position, captured here so
                 // context can be derived without re-querying the live container later.
                 let childContextParent = contextParent ?? (
@@ -1125,7 +1133,7 @@ private extension NSObject {
                         ? AccessibilityHierarchyParser.ContextParent(
                             object: self,
                             capturedIndex: index,
-                            capturedCount: accessibilityElements.count
+                            capturedCount: vendedElements.count
                         )
                         : nil
                 )
@@ -1137,30 +1145,44 @@ private extension NSObject {
                     )
                 )
             }
-            if let tableView = self as? UITableView,
-               let footerView = tableView.tableFooterView,
-               !accessibilityElements.contains(where: { $0 === footerView })
-            {
-                accessibilityHierarchyOfElements.append(
-                    contentsOf: footerView.recursiveAccessibilityHierarchy(
-                        contextParent: contextParent ?? superviewContextParent(),
-                        isRoot: false,
-                        inheritsOffscreen: isOffscreen
-                    )
-                )
-            }
-            let container = (self as? UIView).flatMap {
+            let vendedContainer = (self as? UIView).flatMap {
                 containerInfo(
                     for: $0,
                     hasAccessibleDescendants: accessibilityHierarchyOfElements.contains { $0.containsAccessibleElement }
                 )
             }
-
-            recursiveAccessibilityHierarchy.append(.group(
+            let vendedGroup = AccessibilityNode.group(
                 accessibilityHierarchyOfElements,
                 explicitlyOrdered: true,
+                frameOverrideProvider: nil,
+                container: vendedContainer
+            )
+            var tableHierarchy: [AccessibilityNode] = []
+            if let headerView {
+                tableHierarchy.append(
+                    contentsOf: headerView.recursiveAccessibilityHierarchy(
+                        contextParent: boundaryContextParent,
+                        isRoot: false,
+                        inheritsOffscreen: isOffscreen
+                    )
+                )
+            }
+            tableHierarchy.append(vendedGroup)
+            if let footerView {
+                tableHierarchy.append(
+                    contentsOf: footerView.recursiveAccessibilityHierarchy(
+                        contextParent: boundaryContextParent,
+                        isRoot: false,
+                        inheritsOffscreen: isOffscreen
+                    )
+                )
+            }
+
+            recursiveAccessibilityHierarchy.append(.group(
+                tableHierarchy,
+                explicitlyOrdered: true,
                 frameOverrideProvider: overridesElementFrame(with: contextParent) ? self : nil,
-                container: container
+                container: nil
             ))
 
         } else if let `self` = self as? UIView {
@@ -1214,8 +1236,12 @@ private extension NSObject {
         }
 
         let count = accessibilityElementCount()
-        guard count > 0 else {
+        guard count != NSNotFound else {
             return nil
+        }
+
+        if count == 0 {
+            return hasTableBoundary ? [] : nil
         }
 
         var elements: [NSObject] = []
@@ -1233,9 +1259,9 @@ private extension NSObject {
             // Scroll views (UITableView/UICollectionView) vend all their rows — including
             // off-screen ones — through the index API, the way VoiceOver enumerates them.
             // Plain UIViews are walked via subviews (their index API is a no-op).
-            if self is UIScrollView, !isAccessibilityElement {
+            if self is UIScrollView, !isAccessibilityElement || hasTableBoundary {
                 let count = accessibilityElementCount()
-                return count != NSNotFound && count > 0
+                return count != NSNotFound && (count > 0 || hasTableBoundary)
             }
             return false
         }
@@ -1243,6 +1269,13 @@ private extension NSObject {
             return false
         }
         return accessibilityElementCount() != NSNotFound
+    }
+
+    private var hasTableBoundary: Bool {
+        guard let tableView = self as? UITableView else {
+            return false
+        }
+        return tableView.tableHeaderView != nil || tableView.tableFooterView != nil
     }
 
     private var shouldGateOnAccessibilityFrame: Bool {

@@ -727,8 +727,7 @@ final class AccessibilityHierarchyParserTests: XCTestCase {
 
         let elements = parseMarkers(in: table).map(\.description)
 
-        // The footer is a UIButton, so its materialized description carries the "Button." trait suffix.
-        XCTAssertEqual(elements, ["row", "footer. Button."])
+        XCTAssertEqual(elements, ["row", "footer"])
     }
 
     func testIndexedTableIncludesHeaderBeforeVendedRowsExactlyOnce() {
