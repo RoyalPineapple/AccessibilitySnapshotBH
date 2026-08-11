@@ -1137,6 +1137,18 @@ private extension NSObject {
                     )
                 )
             }
+            if let tableView = self as? UITableView,
+               let footerView = tableView.tableFooterView,
+               !accessibilityElements.contains(where: { $0 === footerView })
+            {
+                accessibilityHierarchyOfElements.append(
+                    contentsOf: footerView.recursiveAccessibilityHierarchy(
+                        contextParent: contextParent ?? superviewContextParent(),
+                        isRoot: false,
+                        inheritsOffscreen: isOffscreen
+                    )
+                )
+            }
             let container = (self as? UIView).flatMap {
                 containerInfo(
                     for: $0,

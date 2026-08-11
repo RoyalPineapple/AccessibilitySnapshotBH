@@ -707,6 +707,29 @@ final class AccessibilityHierarchyParserTests: XCTestCase {
         }
     }
 
+    func testIndexedTableIncludesFooterAfterVendedRowsExactlyOnce() {
+        let table = IndexedTableView(
+            frame: CGRect(x: 0, y: 0, width: 200, height: 200),
+            indexedLabels: ["row"]
+        )
+
+        let footer = UIView(frame: CGRect(x: 0, y: 44, width: 200, height: 44))
+        let button = UIButton(frame: footer.bounds)
+        button.isAccessibilityElement = true
+        button.accessibilityLabel = "footer"
+        footer.addSubview(button)
+        table.tableFooterView = footer
+
+        let unvendedSubview = UIView(frame: CGRect(x: 0, y: 88, width: 200, height: 44))
+        unvendedSubview.isAccessibilityElement = true
+        unvendedSubview.accessibilityLabel = "unvended subview"
+        table.addSubview(unvendedSubview)
+
+        let elements = parseMarkers(in: table).map(\.description)
+
+        XCTAssertEqual(elements, ["row", "footer"])
+    }
+
     // MARK: - Zero-Frame Wrapper Views
 
     /// Verifies that the parser traverses through a zero-frame non-clipping wrapper view to
@@ -1230,6 +1253,43 @@ private final class AccessibilityFrameOverrideView: UIView {
     override var accessibilityFrame: CGRect {
         get { accessibilityFrameOverride ?? super.accessibilityFrame }
         set { accessibilityFrameOverride = newValue }
+    }
+}
+
+private final class IndexedTableView: UITableView {
+    private var indexedElements: [UIAccessibilityElement] = []
+
+    init(frame: CGRect, indexedLabels: [String]) {
+        super.init(frame: frame, style: .plain)
+        indexedElements = indexedLabels.enumerated().map { index, label in
+            let element = UIAccessibilityElement(accessibilityContainer: self)
+            element.accessibilityLabel = label
+            element.accessibilityFrame = CGRect(x: 0, y: index * 44, width: 200, height: 44)
+            return element
+        }
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override func accessibilityElementCount() -> Int {
+        indexedElements.count
+    }
+
+    override func accessibilityElement(at index: Int) -> Any? {
+        guard indexedElements.indices.contains(index) else { return nil }
+        return indexedElements[index]
+    }
+
+    override func index(ofAccessibilityElement element: Any) -> Int {
+        guard let object = element as? UIAccessibilityElement,
+              let index = indexedElements.firstIndex(of: object)
+        else {
+            return NSNotFound
+        }
+        return index
     }
 }
 
