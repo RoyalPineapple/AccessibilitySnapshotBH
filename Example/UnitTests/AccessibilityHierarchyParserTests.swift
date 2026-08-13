@@ -727,7 +727,8 @@ final class AccessibilityHierarchyParserTests: XCTestCase {
 
         let elements = parseMarkers(in: table).map(\.description)
 
-        XCTAssertEqual(elements, ["row", "footer"])
+        // The footer is a UIButton, so its materialized description carries the "Button." trait suffix.
+        XCTAssertEqual(elements, ["row", "footer. Button."])
     }
 
     // MARK: - Zero-Frame Wrapper Views
